@@ -311,8 +311,8 @@
    * Show a detailed error toast with troubleshooting info
    */
   function showError(message, detail) {
-    if (window.App && window.App.showToast) {
-      window.App.showToast(message + (detail ? '\n' + detail : ''), 'error');
+    if (window.App && window.App.toast) {
+      window.App.toast(message + (detail ? '\n' + detail : ''), 'error');
     } else {
       alert(message + (detail ? '\n\n' + detail : ''));
     }
@@ -389,16 +389,14 @@
       }
 
       // Step 5: Fill the editor
-      var editor = document.getElementById('editor-textarea');
+      var editor = document.getElementById('editor-content');
       if (editor) {
         editor.value = markdown;
         // Trigger input event for any listeners
         editor.dispatchEvent(new Event('input', { bubbles: true }));
       }
-
-      if (window.App && window.App.showToast) {
-        window.App.showToast('飞书文档导入成功！共转换 ' + blocks.length + ' 个内容块', 'success');
-      }
+      if (window.App && window.App.updatePreview) window.App.updatePreview();
+      if (window.App && window.App.toast) window.App.toast('飞书文档导入成功！共转换 ' + blocks.length + ' 个内容块', 'success');
 
       // Close the import modal if open
       var modal = document.getElementById('feishu-import-modal');

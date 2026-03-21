@@ -61,6 +61,17 @@
           <div class="hero-divider-line"></div>
         </div>
         <div class="hero-title-group">
+          <svg class="hero-jet" viewBox="0 0 240 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="jetGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#38bdf8"></stop>
+                <stop offset="100%" stop-color="#a78bfa"></stop>
+              </linearGradient>
+            </defs>
+            <polygon points="12,45 62,32 128,36 228,45 128,54 62,58" fill="url(#jetGrad)" opacity="0.9"></polygon>
+            <circle cx="62" cy="45" r="8" fill="#0a0e17"></circle>
+            <polygon points="18,45 2,38 2,52" fill="#f472b6"></polygon>
+          </svg>
           <h1 class="hero-title">探索 <span class="hero-title-accent">技术世界</span></h1>
         </div>
         <p class="hero-subtitle">分享技术见解，记录学习历程，与志同道合的开发者一起成长</p>
@@ -121,7 +132,13 @@
         <h2>👋 欢迎回来</h2>
         <p class="auth-subtitle">登录你的账号，继续探索</p>
         <div class="form-group"><label>账号</label><input type="text" id="login-account" placeholder="请输入账号" maxlength="10"></div>
-        <div class="form-group"><label>密码</label><input type="password" id="login-password" placeholder="请输入密码"></div>
+        <div class="form-group">
+          <label>密码</label>
+          <div class="password-row">
+            <input type="password" id="login-password" placeholder="请输入密码">
+            <button class="pwd-toggle-btn" type="button" onclick="window.App.togglePassword('login-password', this)">显示</button>
+          </div>
+        </div>
         <div class="form-error" id="login-error"></div>
         <button class="btn btn-primary" onclick="window.App.doLogin()">登 录</button>
         <div class="auth-switch">还没有账号？<a onclick="window.App.navigate('register')">立即注册</a></div>
@@ -133,8 +150,20 @@
         <h2>✨ 创建账号</h2>
         <p class="auth-subtitle">加入 TechBlog，开始你的技术之旅</p>
         <div class="form-group"><label>账号（8-10 位数字）</label><input type="text" id="reg-account" placeholder="请输入数字账号" maxlength="10"><div class="form-hint">账号将作为你的唯一标识</div></div>
-        <div class="form-group"><label>密码</label><input type="password" id="reg-password" placeholder="至少 8 位，包含字母和数字"></div>
-        <div class="form-group"><label>确认密码</label><input type="password" id="reg-password2" placeholder="再次输入密码"></div>
+        <div class="form-group">
+          <label>密码</label>
+          <div class="password-row">
+            <input type="password" id="reg-password" placeholder="至少 8 位，包含字母和数字">
+            <button class="pwd-toggle-btn" type="button" onclick="window.App.togglePassword('reg-password', this)">显示</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>确认密码</label>
+          <div class="password-row">
+            <input type="password" id="reg-password2" placeholder="再次输入密码">
+            <button class="pwd-toggle-btn" type="button" onclick="window.App.togglePassword('reg-password2', this)">显示</button>
+          </div>
+        </div>
         <div class="form-group">
           <label>验证码</label>
           <div class="captcha-group">
@@ -161,6 +190,16 @@
           <div class="stat-card"><div class="stat-value" id="stat-articles">0</div><div class="stat-label">文章总数</div></div>
           <div class="stat-card"><div class="stat-value" id="stat-users">0</div><div class="stat-label">注册用户</div></div>
           <div class="stat-card"><div class="stat-value" id="stat-comments">0</div><div class="stat-label">评论总数</div></div>
+        </div>
+        <div class="music-admin-card">
+          <h3>🎵 首页背景音乐</h3>
+          <p class="form-hint">管理员上传后，用户登录进入首页会自动播放。建议 5MB 内 MP3。</p>
+          <div class="music-admin-row">
+            <input type="file" id="bgm-file-input" accept="audio/*">
+            <button class="btn btn-secondary btn-sm" onclick="window.App.saveBackgroundMusic()">上传并启用</button>
+            <button class="btn btn-danger btn-sm" onclick="window.App.clearBackgroundMusic()">关闭音乐</button>
+          </div>
+          <div class="form-hint" id="bgm-current-name">当前：未设置</div>
         </div>
         <table class="admin-table">
           <thead><tr><th>标题</th><th>标签</th><th>作者</th><th>时间</th><th>操作</th></tr></thead>
@@ -218,7 +257,19 @@
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="window.App.closeEditor()">取消</button>
+      <button class="btn btn-secondary" style="width:auto;padding:12px 24px;" onclick="window.App.saveDraft()">保存草稿</button>
+      <button class="btn btn-secondary" style="width:auto;padding:12px 24px;" onclick="window.App.openDrafts()">草稿箱</button>
       <button class="btn btn-primary" style="width:auto;padding:12px 32px;" onclick="window.App.saveArticle()">发布文章</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="drafts-modal">
+  <div class="modal" style="max-width:700px;">
+    <h3>🗂️ 草稿箱</h3>
+    <div id="drafts-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="document.getElementById('drafts-modal').classList.remove('active')">关闭</button>
     </div>
   </div>
 </div>
@@ -271,6 +322,8 @@
 </div>
 
 <div class="toast-container" id="toast-container"></div>
+<audio id="global-bgm-player" preload="none" loop></audio>
+<input type="file" id="editor-image-input" accept="image/*" style="display:none;">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/particles.js"></script>

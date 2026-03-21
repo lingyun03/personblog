@@ -5,10 +5,7 @@
    ============================================ */
 
 /* ===== Hide old particles on homepage ===== */
-#particles-canvas {
-  opacity: 0;
-  pointer-events: none;
-}
+#particles-canvas { opacity: 1; pointer-events: none; }
 
 /* ===== Aurora Gradient Background ===== */
 .aurora-container {
@@ -87,6 +84,12 @@
   background-size: 256px 256px;
 }
 
+.grid-overlay {
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.06) 0, transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(167, 139, 250, 0.08) 0, transparent 45%);
+}
+
 /* ===== Hero Section ===== */
 .hero-new {
   position: relative;
@@ -126,6 +129,18 @@
   margin-bottom: 1.5rem;
   opacity: 0;
   animation: heroFadeIn 0.8s ease forwards 0.4s;
+}
+
+.hero-jet {
+  margin: 0 auto 1rem;
+  width: 120px;
+  filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.35));
+  animation: jetFloat 4s ease-in-out infinite;
+}
+
+@keyframes jetFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-8px) rotate(2deg); }
 }
 
 .hero-title {
