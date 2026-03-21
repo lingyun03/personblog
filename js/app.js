@@ -1,556 +1,471 @@
-/* ============================================
-   TechBlog - Main Application Logic
-   ============================================ */
+var SB_URL = 'https://kkilgyvqrrxwrrrfsdru.supabase.co';
+var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
 
 (function () {
   'use strict';
+  var sb = supabase.createClient(SB_URL, SB_KEY);
+  var isConfigured = SB_URL !== 'YOUR_SUPABASE_URL';
+  var currentUser = null;
+  var currentProfile = null;
+  var currentView = 'home';
+  var searchQuery = '';
+  var editingArticleId = null;
 
-  // ---- Storage Helpers ----
-  const DB = {
-    get(key, fallback = []) {
-      try { return JSON.parse(localStorage.getItem(key)) || fallback; }
-      catch { return fallback; }
-    },
-    set(key, val) { localStorage.setItem(key, JSON.stringify(val)); },
-    remove(key) { localStorage.removeItem(key); }
-  };
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function ago(d) {
+    var t = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
+    if (t < 60) return '刚刚'; if (t < 3600) return Math.floor(t / 60) + ' 分钟前';
+    if (t < 86400) return Math.floor(t / 3600) + ' 小时前';
+    if (t < 2592000) return Math.floor(t / 86400) + ' 天前';
+    return new Date(d).toLocaleDateString('zh-CN');
+  }
+  function trunc(s, n) { if (!s) return ''; var p = s.replace(/[#*`>\-\[\]()!]/g, '').replace(/\n/g, ' ').trim(); return p.length > n ? p.slice(0, n) + '...' : p; }
 
-  // ---- Data Access ----
-  function getUsers() { return DB.get('tb_users', []); }
-  function setUsers(u) { DB.set('tb_users', u); }
-  function getArticles() { return DB.get('tb_articles', []); }
-  function setArticles(a) { DB.set('tb_articles', a); }
-  function getComments(articleId) { return DB.get(`tb_comments_${articleId}`, []); }
-  function setComments(articleId, c) { DB.set(`tb_comments_${articleId}`, c); }
-  function getLikes(articleId) { return DB.get(`tb_likes_${articleId}`, []); }
-  function setLikes(articleId, l) { DB.set(`tb_likes_${articleId}`, l); }
-  function getCurrentUser() { return DB.get('tb_current_user', null); }
-  function setCurrentUser(u) { DB.set('tb_current_user', u); }
-  function logoutUser() { DB.remove('tb_current_user'); }
+  function md(text) {
+    if (!text) return '';
+    var L = text.split('\n'), H = '', inC = false, cc = '', inL = false, lt = '', inQ = false;
+    function cb() { if (inL) { H += lt === 'ul' ? '</ul>' : '</ol>'; inL = false; } if (inQ) { H += '</blockquote>'; inQ = false; } }
+    for (var i = 0; i < L.length; i++) {
+      var l = L[i];
+      if (l.trim().indexOf('```') === 0) { if (inC) { H += '<pre><code>' + esc(cc) + '</code></pre>'; inC = false; cc = ''; } else { cb(); inC = true; } continue; }
+      if (inC) { cc += (cc ? '\n' : '') + l; continue; }
+      if (!l.trim()) { cb(); continue; }
+      if (l.indexOf('### ') === 0) { cb(); H += '<h3>' + il(l.slice(4)) + '</h3>'; continue; }
+      if (l.indexOf('## ') === 0) { cb(); H += '<h2>' + il(l.slice(3)) + '</h2>'; continue; }
+      if (l.indexOf('# ') === 0) { cb(); H += '<h1>' + il(l.slice(2)) + '</h1>'; continue; }
+      if (/^(-{3,}|\*{3,})$/.test(l.trim())) { cb(); H += '<hr>'; continue; }
+      if (l.indexOf('> ') === 0) { if (inL) { H += lt === 'ul' ? '</ul>' : '</ol>'; inL = false; } if (!inQ) { H += '<blockquote>'; inQ = true; } H += '<p>' + il(l.slice(2)) + '</p>'; continue; }
+      if (/^[-*+]\s/.test(l)) { if (inQ) { H += '</blockquote>'; inQ = false; } if (!inL || lt !== 'ul') { if (inL) H += lt === 'ul' ? '</ul>' : '</ol>'; H += '<ul>'; inL = true; lt = 'ul'; } H += '<li>' + il(l.replace(/^[-*+]\s/, '')) + '</li>'; continue; }
+      if (/^\d+\.\s/.test(l)) { if (inQ) { H += '</blockquote>'; inQ = false; } if (!inL || lt !== 'ol') { if (inL) H += lt === 'ul' ? '</ul>' : '</ol>'; H += '<ol>'; inL = true; lt = 'ol'; } H += '<li>' + il(l.replace(/^\d+\.\s/, '')) + '</li>'; continue; }
+      cb(); H += '<p>' + il(l) + '</p>';
+    }
+    if (inC) H += '<pre><code>' + esc(cc) + '</code></pre>';
+    cb(); return H;
+  }
+  function il(t) {
+    t = t.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    return t;
+  }
 
-  // ---- Seed default admin ----
-  (function seedAdmin() {
-    const users = getUsers();
-    if (!users.find(u => u.account === '88888888')) {
-      users.push({
-        account: '88888888',
-        password: 'admin888',
-        role: 'admin',
-        createdAt: new Date().toISOString()
+  function toast(m, t) {
+    var c = document.getElementById('toast-container'), e = document.createElement('div');
+    e.className = 'toast ' + (t || 'info'); e.textContent = m; c.appendChild(e);
+    setTimeout(function () { if (e.parentNode) e.parentNode.removeChild(e); }, 3000);
+  }
+
+  var captchaCode = '', CC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function genCaptcha(id) {
+    var cv = document.getElementById(id); if (!cv) return '';
+    var ctx = cv.getContext('2d'), code = '';
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, cv.width, cv.height);
+    for (var i = 0; i < 4; i++) {
+      var ch = CC[Math.floor(Math.random() * CC.length)]; code += ch; ctx.save();
+      ctx.font = (18 + Math.random() * 8) + 'px monospace';
+      ctx.fillStyle = 'hsl(' + (180 + Math.random() * 60) + ',80%,70%)';
+      ctx.translate(18 + i * 26, 28 + Math.random() * 8);
+      ctx.rotate((Math.random() - 0.5) * 0.4); ctx.fillText(ch, 0, 0); ctx.restore();
+    }
+    for (var j = 0; j < 4; j++) { ctx.beginPath(); ctx.moveTo(Math.random() * cv.width, Math.random() * cv.height); ctx.lineTo(Math.random() * cv.width, Math.random() * cv.height); ctx.strokeStyle = 'rgba(56,189,248,' + (0.2 + Math.random() * 0.3) + ')'; ctx.lineWidth = 1; ctx.stroke(); }
+    captchaCode = code; return code;
+  }
+
+  function navigate(view, id) {
+    currentView = view;
+    document.querySelectorAll('.page-view').forEach(function (e) { e.classList.remove('active'); });
+    var t = document.getElementById('view-' + view); if (t) t.classList.add('active');
+    updateNav();
+    if (view === 'home') renderHome();
+    else if (view === 'article') renderArticle(id);
+    else if (view === 'admin') renderAdmin();
+    else if (view === 'login') genCaptcha('login-captcha-canvas');
+    else if (view === 'register') genCaptcha('register-captcha');
+    window.scrollTo(0, 0);
+  }
+
+  function updateNav() {
+    var nl = document.getElementById('nav-links'), nu = document.getElementById('nav-user'), na = document.getElementById('nav-auth');
+    if (currentUser) {
+      nl.style.display = 'flex'; nu.style.display = 'flex'; na.style.display = 'none';
+      var al = document.getElementById('nav-admin'); if (al) al.style.display = currentProfile && currentProfile.role === 'admin' ? '' : 'none';
+      var wl = document.getElementById('nav-write'); if (wl) wl.style.display = '';
+      document.getElementById('user-avatar-btn').textContent = currentProfile ? (currentProfile.avatar || '👤') : '👤';
+      document.getElementById('dropdown-name').textContent = currentProfile ? (currentProfile.display_name || '用户') : '用户';
+      document.getElementById('dropdown-role').textContent = currentProfile && currentProfile.role === 'admin' ? '管理员' : '作者';
+      document.getElementById('dropdown-avatar').textContent = currentProfile ? (currentProfile.avatar || '👤') : '👤';
+    } else { nl.style.display = 'none'; nu.style.display = 'none'; na.style.display = 'flex'; }
+  }
+
+  async function doRegister() {
+    var acc = document.getElementById('reg-account').value.trim();
+    var pw = document.getElementById('reg-password').value;
+    var pw2 = document.getElementById('reg-password2').value;
+    var ci = document.getElementById('reg-captcha').value.trim().toUpperCase();
+    var err = document.getElementById('reg-error'); err.classList.remove('show');
+    if (!/^\d{8,10}$/.test(acc)) { err.textContent = '账号必须是 8-10 位数字'; err.classList.add('show'); return; }
+    if (!/^(?=.*[a-zA-Z])(?=.*\d).{8,}$/.test(pw)) { err.textContent = '密码至少 8 位，需包含字母和数字'; err.classList.add('show'); return; }
+    if (pw !== pw2) { err.textContent = '两次密码不一致'; err.classList.add('show'); return; }
+    if (ci !== captchaCode) { err.textContent = '验证码错误'; err.classList.add('show'); genCaptcha('register-captcha'); return; }
+    try {
+      var role = acc === '12345678' ? 'admin' : 'user';
+      var { data, error } = await sb.auth.signUp({
+        email: acc + '@techblog.local', password: pw,
+        options: { data: { displayName: '用户' + acc.slice(-4), avatar: '👤', bio: '', role: role } }
       });
-      setUsers(users);
-    }
-    // Seed sample articles
-    const articles = getArticles();
-    if (articles.length === 0) {
-      const now = new Date().toISOString();
-      setArticles([
-        {
-          id: 'a1', title: '探索量子计算的未来',
-          content: '量子计算是计算机科学中最令人兴奋的前沿领域之一。与经典计算机使用比特（0或1）不同，量子计算机使用量子比特（qubit），它可以同时处于0和1的叠加态。\n\n这种特性使得量子计算机在处理某些特定问题时具有指数级的速度优势。例如，在密码学、药物发现、材料科学和优化问题等领域，量子计算有望带来革命性的突破。\n\n目前，Google、IBM、微软等科技巨头都在大力投资量子计算研究。虽然我们距离通用量子计算机还有很长的路要走，但每一步进展都令人振奋。',
-          tag: '科技前沿', author: '88888888', createdAt: now, updatedAt: now
-        },
-        {
-          id: 'a2', title: '人工智能与创意产业的融合',
-          content: '人工智能正在深刻改变创意产业的面貌。从AI绘画到音乐生成，从自动写作到视频创作，AI工具正在成为创作者的得力助手。\n\n然而，这也引发了关于原创性、版权和人类创造力的深刻讨论。AI究竟是创意的威胁，还是创意的延伸？\n\n答案可能介于两者之间。最成功的案例往往是人类与AI协作的结果——人类提供创意方向和审美判断，AI提供执行能力和无限变体。这种协作模式正在定义创意产业的新范式。',
-          tag: 'AI', author: '88888888', createdAt: now, updatedAt: now
-        },
-        {
-          id: 'a3', title: 'Web3.0：去中心化的互联网愿景',
-          content: 'Web3.0代表着互联网的下一个演进阶段，其核心理念是去中心化、用户所有权和互操作性。\n\n在Web3.0的世界里，用户不再只是平台的"产品"，而是真正拥有自己的数据和数字资产。区块链技术为这一愿景提供了技术基础，智能合约使得去中心化应用（DApp）成为可能。\n\n尽管目前Web3.0仍处于早期阶段，面临着可扩展性、用户体验和监管等方面的挑战，但它所代表的去中心化理念正在影响着整个科技行业的发展方向。',
-          tag: '区块链', author: '88888888', createdAt: now, updatedAt: now
-        }
-      ]);
-    }
-  })();
-
-  // ---- Utility ----
-  function genId() { return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8); }
-
-  function formatDate(iso) {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      if (error) throw error;
+      toast('注册成功，请登录', 'success'); navigate('login');
+    } catch (e) { err.textContent = '注册失败：' + (e.message || '请重试'); err.classList.add('show'); }
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  function timeAgo(iso) {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return '刚刚';
-    if (mins < 60) return `${mins} 分钟前`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} 小时前`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} 天前`;
-    return formatDate(iso);
-  }
-
-  // ---- Toast ----
-  function showToast(msg, type = 'info') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = msg;
-    container.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-  }
-
-  // ---- Router ----
-  function navigate(view, params = {}) {
-    document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
-    const target = document.getElementById(`view-${view}`);
-    if (target) target.classList.add('active');
-
-    // Update nav active state
-    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-    const activeLink = document.querySelector(`.nav-link[data-view="${view}"]`);
-    if (activeLink) activeLink.classList.add('active');
-
-    // View-specific rendering
-    switch (view) {
-      case 'home': renderHome(); break;
-      case 'article': renderArticleDetail(params.id); break;
-      case 'admin': renderAdmin(); break;
-    }
-
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  // ---- Auth UI ----
-  function updateAuthUI() {
-    const user = getCurrentUser();
-    const authLinks = document.getElementById('nav-auth');
-    const userLinks = document.getElementById('nav-user');
-    const adminLink = document.getElementById('nav-admin');
-
-    if (user) {
-      authLinks.style.display = 'none';
-      userLinks.style.display = 'flex';
-      document.getElementById('user-avatar').textContent = user.account.slice(-2);
-      document.getElementById('user-name').textContent = user.account;
-      adminLink.style.display = user.role === 'admin' ? 'inline-flex' : 'none';
-    } else {
-      authLinks.style.display = 'flex';
-      userLinks.style.display = 'none';
-      adminLink.style.display = 'none';
-    }
-  }
-
-  // ---- Registration ----
-  function handleRegister(e) {
-    e.preventDefault();
-    const account = document.getElementById('reg-account').value.trim();
-    const password = document.getElementById('reg-password').value;
-    const confirm = document.getElementById('reg-confirm').value;
-    const errEl = document.getElementById('reg-error');
-
-    // Validate account: 8-10 digits
-    if (!/^\d{8,10}$/.test(account)) {
-      errEl.textContent = '账号必须为 8 到 10 位纯数字';
-      errEl.classList.add('show');
-      return;
-    }
-
-    // Validate password: min 8 chars, must contain both letters and numbers
-    if (password.length < 8) {
-      errEl.textContent = '密码长度不能少于 8 位';
-      errEl.classList.add('show');
-      return;
-    }
-    if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-      errEl.textContent = '密码必须同时包含字母和数字';
-      errEl.classList.add('show');
-      return;
-    }
-
-    if (password !== confirm) {
-      errEl.textContent = '两次输入的密码不一致';
-      errEl.classList.add('show');
-      return;
-    }
-
-    // Check duplicate
-    const users = getUsers();
-    if (users.find(u => u.account === account)) {
-      errEl.textContent = '该账号已被注册';
-      errEl.classList.add('show');
-      return;
-    }
-
-    users.push({
-      account,
-      password,
-      role: 'user',
-      createdAt: new Date().toISOString()
-    });
-    setUsers(users);
-
-    errEl.classList.remove('show');
-    showToast('注册成功，请登录', 'success');
-    navigate('login');
-  }
-
-  // ---- Login ----
-  function handleLogin(e) {
-    e.preventDefault();
-    const account = document.getElementById('login-account').value.trim();
-    const password = document.getElementById('login-password').value;
-    const errEl = document.getElementById('login-error');
-
-    const users = getUsers();
-    const user = users.find(u => u.account === account && u.password === password);
-
-    if (!user) {
-      errEl.textContent = '账号或密码错误';
-      errEl.classList.add('show');
-      return;
-    }
-
-    errEl.classList.remove('show');
-    setCurrentUser({ account: user.account, role: user.role });
-    showToast(`欢迎回来，${user.account}`, 'success');
-    updateAuthUI();
-    navigate('home');
-  }
-
-  function handleLogout() {
-    logoutUser();
-    updateAuthUI();
-    showToast('已退出登录', 'info');
-    navigate('home');
-  }
-
-  // ---- Home / Articles List ----
-  function renderHome() {
-    const articles = getArticles().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const user = getCurrentUser();
-    const grid = document.getElementById('articles-grid');
-    const emptyState = document.getElementById('articles-empty');
-
-    if (articles.length === 0) {
-      grid.innerHTML = '';
-      emptyState.style.display = 'block';
-      return;
-    }
-
-    emptyState.style.display = 'none';
-    grid.innerHTML = articles.map(a => {
-      const likes = getLikes(a.id);
-      const comments = getComments(a.id);
-      const isLiked = user && likes.includes(user.account);
-      return `
-        <div class="article-card" onclick="App.goArticle('${a.id}')">
-          <div class="card-meta">
-            <span class="card-tag">${escapeHtml(a.tag || '未分类')}</span>
-            <span>${formatDate(a.createdAt)}</span>
-          </div>
-          <div class="card-title">${escapeHtml(a.title)}</div>
-          <div class="card-excerpt">${escapeHtml(a.content.slice(0, 150))}...</div>
-          <div class="card-footer">
-            <div class="card-stats">
-              <span class="${isLiked ? 'liked' : ''}">❤ ${likes.length}</span>
-              <span>💬 ${comments.length}</span>
-            </div>
-            <span style="font-size:0.8rem;color:var(--text-muted)">@${escapeHtml(a.author)}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // ---- Article Detail ----
-  function renderArticleDetail(id) {
-    const articles = getArticles();
-    const article = articles.find(a => a.id === id);
-    if (!article) {
-      showToast('文章不存在', 'error');
+  async function doLogin() {
+    var acc = document.getElementById('login-account').value.trim();
+    var pw = document.getElementById('login-password').value;
+    var ci = document.getElementById('login-captcha').value.trim().toUpperCase();
+    var err = document.getElementById('login-error'); err.classList.remove('show');
+    if (ci !== captchaCode) { err.textContent = '验证码错误'; err.classList.add('show'); genCaptcha('login-captcha-canvas'); return; }
+    try {
+      var { data, error } = await sb.auth.signInWithPassword({ email: acc + '@techblog.local', password: pw });
+      if (error) throw error;
+      currentUser = data.user;
+      var { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+      currentProfile = p;
+      toast('欢迎回来，' + (currentProfile ? currentProfile.display_name : acc), 'success');
       navigate('home');
-      return;
-    }
-
-    const user = getCurrentUser();
-    const likes = getLikes(id);
-    const comments = getComments(id);
-    const isLiked = user && likes.includes(user.account);
-
-    document.getElementById('detail-title').textContent = article.title;
-    document.getElementById('detail-meta').innerHTML = `
-      <span class="card-tag">${escapeHtml(article.tag || '未分类')}</span>
-      <span>作者：@${escapeHtml(article.author)}</span>
-      <span>发布于 ${formatDate(article.createdAt)}</span>
-      ${article.updatedAt !== article.createdAt ? `<span>更新于 ${formatDate(article.updatedAt)}</span>` : ''}
-    `;
-    document.getElementById('detail-content').textContent = article.content;
-
-    // Actions
-    const actionsEl = document.getElementById('detail-actions');
-    if (user) {
-      actionsEl.style.display = 'flex';
-      actionsEl.innerHTML = `
-        <button class="btn btn-sm ${isLiked ? 'btn-danger' : 'btn-secondary'}" onclick="App.toggleLike('${id}')">
-          ${isLiked ? '❤ 已点赞' : '🤍 点赞'} (${likes.length})
-        </button>
-        ${user.role === 'admin' ? `
-          <button class="btn btn-sm btn-secondary" onclick="App.editArticle('${id}')">✏️ 编辑</button>
-          <button class="btn btn-sm btn-danger" onclick="App.confirmDelete('${id}')">🗑️ 删除</button>
-        ` : ''}
-      `;
-    } else {
-      actionsEl.style.display = 'none';
-    }
-
-    // Comments
-    renderComments(id, user);
+    } catch (e) { err.textContent = '账号或密码错误'; err.classList.add('show'); genCaptcha('login-captcha-canvas'); }
   }
 
-  function renderComments(articleId, user) {
-    const comments = getComments(articleId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const listEl = document.getElementById('comment-list');
-    const formEl = document.getElementById('comment-form');
+  async function doLogout() {
+    await sb.auth.signOut(); currentUser = null; currentProfile = null;
+    closeDropdown(); toast('已退出登录', 'info'); navigate('home');
+  }
 
-    if (user) {
-      formEl.style.display = 'flex';
-      formEl.onsubmit = (e) => {
-        e.preventDefault();
-        const input = document.getElementById('comment-input');
-        const text = input.value.trim();
-        if (!text) return;
+  function toggleDropdown() { document.getElementById('user-dropdown').classList.toggle('show'); }
+  function closeDropdown() { document.getElementById('user-dropdown').classList.remove('show'); }
 
-        const comments = getComments(articleId);
-        comments.push({
-          id: genId(),
-          author: user.account,
-          text,
-          createdAt: new Date().toISOString()
+  function openProfile() {
+    closeDropdown(); if (!currentProfile) return;
+    document.getElementById('profile-name').value = currentProfile.display_name || '';
+    document.getElementById('profile-bio').value = currentProfile.bio || '';
+    document.getElementById('profile-avatar-preview').textContent = currentProfile.avatar || '👤';
+    document.querySelectorAll('.emoji-option').forEach(function (e) { e.classList.toggle('selected', e.dataset.emoji === (currentProfile.avatar || '👤')); });
+    document.getElementById('profile-modal').classList.add('active');
+  }
+  function selectEmoji(em) {
+    document.getElementById('profile-avatar-preview').textContent = em;
+    document.querySelectorAll('.emoji-option').forEach(function (e) { e.classList.toggle('selected', e.dataset.emoji === em); });
+  }
+  async function saveProfile() {
+    if (!currentUser) return;
+    var name = document.getElementById('profile-name').value.trim();
+    if (!name) { toast('请输入昵称', 'error'); return; }
+    try {
+      var { error } = await sb.from('profiles').update({
+        display_name: name, bio: document.getElementById('profile-bio').value.trim(),
+        avatar: document.getElementById('profile-avatar-preview').textContent
+      }).eq('id', currentUser.id);
+      if (error) throw error;
+      currentProfile.display_name = name;
+      currentProfile.bio = document.getElementById('profile-bio').value.trim();
+      currentProfile.avatar = document.getElementById('profile-avatar-preview').textContent;
+      document.getElementById('profile-modal').classList.remove('active');
+      toast('个人信息已更新', 'success'); updateNav();
+    } catch (e) { toast('保存失败', 'error'); }
+  }
+
+  async function renderHome() {
+    var c = document.getElementById('articles-grid'), cn = document.getElementById('articles-count'), si = document.getElementById('search-result-info');
+    c.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    try {
+      var { data: articles, error } = await sb.from('articles').select('*, author:profiles(*)').order('created_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      var f = articles;
+      if (searchQuery) {
+        var q = searchQuery.toLowerCase();
+        f = articles.filter(function (a) {
+          return (a.title || '').toLowerCase().indexOf(q) !== -1 || (a.content || '').toLowerCase().indexOf(q) !== -1 || (a.tag || '').toLowerCase().indexOf(q) !== -1;
         });
-        setComments(articleId, comments);
-        input.value = '';
-        renderComments(articleId, user);
-        showToast('评论成功', 'success');
-      };
-    } else {
-      formEl.style.display = 'none';
-    }
-
-    if (comments.length === 0) {
-      listEl.innerHTML = '<div class="empty-state" style="padding:2rem"><p>暂无评论，来说点什么吧 ✨</p></div>';
-      return;
-    }
-
-    listEl.innerHTML = comments.map(c => `
-      <div class="comment-item">
-        <div class="comment-avatar">${c.author.slice(-2)}</div>
-        <div class="comment-body">
-          <div class="comment-author">@${escapeHtml(c.author)}</div>
-          <div class="comment-text">${escapeHtml(c.text)}</div>
-          <div class="comment-time">${timeAgo(c.createdAt)}</div>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  // ---- Like ----
-  function toggleLike(articleId) {
-    const user = getCurrentUser();
-    if (!user) { showToast('请先登录', 'error'); return; }
-
-    let likes = getLikes(articleId);
-    const idx = likes.indexOf(user.account);
-    if (idx > -1) {
-      likes.splice(idx, 1);
-    } else {
-      likes.push(user.account);
-    }
-    setLikes(articleId, likes);
-    renderArticleDetail(articleId);
-  }
-
-  // ---- Admin Panel ----
-  function renderAdmin() {
-    const user = getCurrentUser();
-    if (!user || user.role !== 'admin') {
-      showToast('无权限访问', 'error');
-      navigate('home');
-      return;
-    }
-
-    const articles = getArticles().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const users = getUsers();
-
-    // Stats
-    document.getElementById('stat-articles').textContent = articles.length;
-    document.getElementById('stat-users').textContent = users.length;
-    const totalLikes = articles.reduce((sum, a) => sum + getLikes(a.id).length, 0);
-    document.getElementById('stat-likes').textContent = totalLikes;
-    const totalComments = articles.reduce((sum, a) => sum + getComments(a.id).length, 0);
-    document.getElementById('stat-comments').textContent = totalComments;
-
-    // Table
-    const tbody = document.getElementById('admin-tbody');
-    if (articles.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted)">暂无文章</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = articles.map(a => `
-      <tr>
-        <td class="table-title">${escapeHtml(a.title)}</td>
-        <td><span class="card-tag">${escapeHtml(a.tag || '未分类')}</span></td>
-        <td style="color:var(--text-muted);font-size:0.82rem">${formatDate(a.createdAt)}</td>
-        <td style="color:var(--text-muted)">❤ ${getLikes(a.id).length} &nbsp; 💬 ${getComments(a.id).length}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn btn-sm btn-secondary" onclick="App.editArticle('${a.id}')">编辑</button>
-            <button class="btn btn-sm btn-danger" onclick="App.confirmDelete('${a.id}')">删除</button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  }
-
-  // ---- Article Editor (Modal) ----
-  function openEditor(articleId = null) {
-    const modal = document.getElementById('editor-modal');
-    const title = document.getElementById('editor-title');
-    const tag = document.getElementById('editor-tag');
-    const content = document.getElementById('editor-content');
-    const heading = document.getElementById('editor-heading');
-
-    if (articleId) {
-      const article = getArticles().find(a => a.id === articleId);
-      if (!article) return;
-      heading.textContent = '编辑文章';
-      title.value = article.title;
-      tag.value = article.tag || '';
-      content.value = article.content;
-      modal.dataset.editId = articleId;
-    } else {
-      heading.textContent = '发布新文章';
-      title.value = '';
-      tag.value = '';
-      content.value = '';
-      delete modal.dataset.editId;
-    }
-
-    modal.classList.add('active');
-  }
-
-  function closeEditor() {
-    document.getElementById('editor-modal').classList.remove('active');
-  }
-
-  function saveArticle() {
-    const modal = document.getElementById('editor-modal');
-    const title = document.getElementById('editor-title').value.trim();
-    const tag = document.getElementById('editor-tag').value.trim();
-    const content = document.getElementById('editor-content').value.trim();
-
-    if (!title) { showToast('请输入文章标题', 'error'); return; }
-    if (!content) { showToast('请输入文章内容', 'error'); return; }
-
-    const user = getCurrentUser();
-    const articles = getArticles();
-    const now = new Date().toISOString();
-
-    if (modal.dataset.editId) {
-      const idx = articles.findIndex(a => a.id === modal.dataset.editId);
-      if (idx > -1) {
-        articles[idx].title = title;
-        articles[idx].tag = tag || '未分类';
-        articles[idx].content = content;
-        articles[idx].updatedAt = now;
-      }
-      showToast('文章已更新', 'success');
-    } else {
-      articles.push({
-        id: genId(),
-        title,
-        tag: tag || '未分类',
-        content,
-        author: user.account,
-        createdAt: now,
-        updatedAt: now
+        si.textContent = '搜索 "' + searchQuery + '" 找到 ' + f.length + ' 篇文章'; si.classList.add('show');
+      } else { si.classList.remove('show'); }
+      cn.textContent = '共 ' + f.length + ' 篇文章';
+      if (!f.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><p>' + (searchQuery ? '没有找到匹配的文章' : '还没有文章，快来写第一篇吧！') + '</p></div>'; return; }
+      var aids = f.map(function (a) { return a.id; });
+      var { data: lk } = aids.length ? await sb.from('likes').select('article_id').in('article_id', aids) : { data: [] };
+      var { data: cm } = aids.length ? await sb.from('comments').select('article_id').in('article_id', aids) : { data: [] };
+      var lc = {}, cc = {};
+      (lk || []).forEach(function (l) { lc[l.article_id] = (lc[l.article_id] || 0) + 1; });
+      (cm || []).forEach(function (c) { cc[c.article_id] = (cc[c.article_id] || 0) + 1; });
+      var h = '';
+      f.forEach(function (a) {
+        var au = a.author || {};
+        h += '<div class="article-card" onclick="window.App.viewArticle(\'' + a.id + '\')">' +
+          '<div class="card-meta"><span class="card-tag">' + esc(a.tag || '未分类') + '</span><span>' + ago(a.created_at) + '</span></div>' +
+          '<div class="card-title">' + esc(a.title) + '</div>' +
+          '<div class="card-excerpt">' + esc(trunc(a.content, 120)) + '</div>' +
+          '<div class="card-footer"><div class="card-stats"><span>❤️ ' + (lc[a.id] || 0) + '</span><span>💬 ' + (cc[a.id] || 0) + '</span></div>' +
+          '<div class="card-author"><div class="mini-avatar">' + (au.avatar || '👤') + '</div><span>' + esc(au.display_name || '匿名') + '</span></div></div></div>';
       });
-      showToast('文章已发布', 'success');
-    }
-
-    setArticles(articles);
-    closeEditor();
-    renderAdmin();
+      c.innerHTML = h;
+    } catch (e) { c.innerHTML = '<div class="empty-state"><p>加载失败，请检查网络后刷新</p></div>'; }
   }
 
-  // ---- Delete Article ----
-  function confirmDelete(articleId) {
-    document.getElementById('confirm-overlay').classList.add('active');
-    document.getElementById('confirm-yes').onclick = () => {
-      deleteArticle(articleId);
-      document.getElementById('confirm-overlay').classList.remove('active');
-    };
-    document.getElementById('confirm-no').onclick = () => {
-      document.getElementById('confirm-overlay').classList.remove('active');
-    };
+  function onSearch(v) { searchQuery = v.trim(); document.getElementById('search-clear').classList.toggle('show', !!searchQuery); renderHome(); }
+  function clearSearch() { document.getElementById('search-input').value = ''; searchQuery = ''; document.getElementById('search-clear').classList.remove('show'); document.getElementById('search-result-info').classList.remove('show'); renderHome(); }
+
+  async function renderArticle(id) {
+    var c = document.getElementById('article-detail-content');
+    c.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    try {
+      var { data: a, error } = await sb.from('articles').select('*, author:profiles(*)').eq('id', id).single();
+      if (error) throw error;
+      var au = a.author || {};
+      var { data: comments } = await sb.from('comments').select('*, author:profiles(*)').eq('article_id', id).order('created_at', { ascending: false });
+      var { data: likes } = await sb.from('likes').select('user_id').eq('article_id', id);
+      var liked = currentUser && likes ? likes.some(function (l) { return l.user_id === currentUser.id; }) : false;
+      var ch = '';
+      if (!comments || !comments.length) ch = '<p style="color:var(--text-muted);font-size:0.88rem;">暂无评论</p>';
+      else comments.forEach(function (c) {
+        var ca = c.author || {};
+        ch += '<div class="comment-item"><div class="comment-avatar">' + (ca.avatar || '👤') + '</div><div class="comment-body"><div class="comment-author">' + esc(ca.display_name || '匿名') + '</div><div class="comment-text">' + esc(c.text) + '</div><div class="comment-time">' + ago(c.created_at) + '</div></div></div>';
+      });
+      c.innerHTML = '<button class="back-btn" onclick="window.App.navigate(\'home\')">← 返回首页</button>' +
+        '<div class="detail-header"><h1 class="detail-title">' + esc(a.title) + '</h1>' +
+        '<div class="detail-meta"><span class="meta-author"><span class="meta-avatar">' + (au.avatar || '👤') + '</span>' + esc(au.display_name || '匿名') + '</span>' +
+        '<span class="card-tag">' + esc(a.tag || '未分类') + '</span><span>' + ago(a.created_at) + '</span></div></div>' +
+        '<div class="markdown-body">' + md(a.content) + '</div>' +
+        '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' || 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + (likes ? likes.length : 0) + '</button>' +
+        '<span style="color:var(--text-muted);font-size:0.88rem;">💬 ' + (comments ? comments.length : 0) + ' 条评论</span></div>' +
+        '<div class="comments-section"><h3>💬 评论</h3>' +
+        (currentUser ? '<div class="comment-form"><input id="comment-input" placeholder="写下你的评论..." maxlength="500"><button class="btn btn-sm btn-primary" style="width:auto" onclick="window.App.addComment(\'' + id + '\')">发送</button></div>' :
+        '<p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">登录后即可评论</p>') +
+        '<div class="comment-list">' + ch + '</div></div>';
+    } catch (e) { toast('加载失败', 'error'); navigate('home'); }
   }
 
-  function deleteArticle(articleId) {
-    let articles = getArticles();
-    articles = articles.filter(a => a.id !== articleId);
-    setArticles(articles);
-    showToast('文章已删除', 'success');
+  async function toggleLike(aid) {
+    if (!currentUser) { toast('请先登录', 'error'); return; }
+    try {
+      var { data: ex } = await sb.from('likes').select('id').eq('article_id', aid).eq('user_id', currentUser.id).maybeSingle();
+      if (ex) { await sb.from('likes').delete().eq('id', ex.id); }
+      else { await sb.from('likes').insert({ article_id: aid, user_id: currentUser.id }); }
+      renderArticle(aid);
+    } catch (e) { toast('操作失败', 'error'); }
+  }
 
-    // Check current view
-    const detailView = document.getElementById('view-article');
-    if (detailView.classList.contains('active')) {
-      navigate('home');
+  async function addComment(aid) {
+    if (!currentUser) return;
+    var inp = document.getElementById('comment-input'), txt = inp.value.trim();
+    if (!txt) { toast('请输入评论内容', 'error'); return; }
+    try {
+      var { error } = await sb.from('comments').insert({ text: txt, article_id: aid, author_id: currentUser.id });
+      if (error) throw error;
+      inp.value = ''; toast('评论成功', 'success'); renderArticle(aid);
+    } catch (e) { toast('评论失败', 'error'); }
+  }
+
+  async function renderAdmin() {
+    if (!currentProfile || currentProfile.role !== 'admin') { navigate('home'); return; }
+    try {
+      var { data: articles } = await sb.from('articles').select('*, author:profiles(*)').order('created_at', { ascending: false }).limit(200);
+      var { count: ucount } = await sb.from('profiles').select('*', { count: 'exact', head: true });
+      var { count: ccount } = await sb.from('comments').select('*', { count: 'exact', head: true });
+      document.getElementById('stat-articles').textContent = articles ? articles.length : 0;
+      document.getElementById('stat-users').textContent = ucount || 0;
+      document.getElementById('stat-comments').textContent = ccount || 0;
+      var tb = document.getElementById('admin-tbody');
+      if (!articles || !articles.length) { tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem;">暂无文章</td></tr>'; return; }
+      var h = '';
+      articles.forEach(function (a) {
+        var au = a.author || {};
+        h += '<tr><td class="table-title">' + esc(a.title) + '</td><td><span class="card-tag">' + esc(a.tag || '未分类') + '</span></td>' +
+          '<td style="font-size:0.82rem;color:var(--text-muted);">' + esc(au.display_name || '匿名') + '</td>' +
+          '<td style="font-size:0.82rem;color:var(--text-muted);">' + ago(a.created_at) + '</td>' +
+          '<td class="table-actions"><button class="btn btn-sm btn-secondary" onclick="window.App.editArticle(\'' + a.id + '\')">编辑</button>' +
+          '<button class="btn btn-sm btn-danger" onclick="window.App.confirmDelete(\'' + a.id + '\')">删除</button></td></tr>';
+      });
+      tb.innerHTML = h;
+    } catch (e) { toast('加载失败', 'error'); }
+  }
+
+  async function openEditor(aid) {
+    editingArticleId = aid || null;
+    var te = document.getElementById('editor-title'), tg = document.getElementById('editor-tag'), tc = document.getElementById('editor-content');
+    document.getElementById('feishu-import-section').style.display = (currentProfile && currentProfile.role === 'admin') ? '' : 'none';
+    if (aid) {
+      document.getElementById('editor-modal-title').textContent = '编辑文章';
+      var { data: a } = await sb.from('articles').select('*').eq('id', aid).single();
+      if (a) { te.value = a.title || ''; tg.value = a.tag || ''; tc.value = a.content || ''; updatePreview(); }
     } else {
-      renderAdmin();
+      document.getElementById('editor-modal-title').textContent = '写文章';
+      te.value = ''; tg.value = ''; tc.value = '';
+      document.getElementById('editor-preview').innerHTML = '<div class="markdown-body" style="color:var(--text-muted);text-align:center;padding:3rem;">预览区域</div>';
     }
+    switchTab('edit'); document.getElementById('editor-modal').classList.add('active');
+  }
+  function closeEditor() { document.getElementById('editor-modal').classList.remove('active'); editingArticleId = null; }
+  function switchTab(t) {
+    document.querySelectorAll('.editor-tab').forEach(function (e) { e.classList.toggle('active', e.dataset.tab === t); });
+    document.getElementById('editor-edit-area').style.display = t === 'edit' ? '' : 'none';
+    document.getElementById('editor-preview').style.display = t === 'preview' ? '' : 'none';
+    if (t === 'preview') updatePreview();
+  }
+  function updatePreview() { document.getElementById('editor-preview').innerHTML = '<div class="markdown-body">' + md(document.getElementById('editor-content').value) + '</div>'; }
+
+  function insMd(b, a, p) {
+    var ta = document.getElementById('editor-content'), s = ta.selectionStart, e = ta.selectionEnd;
+    var sel = ta.value.substring(s, e) || p || '';
+    ta.value = ta.value.substring(0, s) + b + sel + (a || '') + ta.value.substring(e);
+    ta.focus(); ta.setSelectionRange(s + b.length, s + b.length + sel.length); updatePreview();
+  }
+  function toolbarAction(act) {
+    var m = { h1: ['# ', '', '一级标题'], h2: ['## ', '', '二级标题'], h3: ['### ', '', '三级标题'], bold: ['**', '**', '粗体'], italic: ['*', '*', '斜体'], code: ['`', '`', '代码'], codeblock: ['\n```\n', '\n```\n', '代码'], quote: ['> ', '', '引用'], ul: ['- ', '', '列表项'], ol: ['1. ', '', '列表项'], link: ['[', '](https://)', '链接'], image: ['![', '](https://)', '图片'], hr: ['\n---\n', '', ''] };
+    var r = m[act]; if (r) insMd(r[0], r[1], r[2]);
   }
 
-  // ---- Public API ----
+  async function saveArticle() {
+    if (!currentUser) { toast('请先登录', 'error'); return; }
+    var title = document.getElementById('editor-title').value.trim();
+    var tag = document.getElementById('editor-tag').value.trim();
+    var content = document.getElementById('editor-content').value.trim();
+    if (!title) { toast('请输入文章标题', 'error'); return; }
+    if (!content) { toast('请输入文章内容', 'error'); return; }
+    try {
+      if (editingArticleId) {
+        var { error } = await sb.from('articles').update({ title: title, tag: tag || '未分类', content: content }).eq('id', editingArticleId);
+        if (error) throw error; toast('文章已更新', 'success');
+      } else {
+        var { error: e2 } = await sb.from('articles').insert({ title: title, tag: tag || '未分类', content: content, author_id: currentUser.id });
+        if (e2) throw e2; toast('文章发布成功', 'success');
+      }
+      closeEditor();
+      if (currentView === 'admin') renderAdmin(); else if (currentView === 'home') renderHome();
+    } catch (e) { toast('保存失败：' + e.message, 'error'); }
+  }
+  function editArticle(id) { openEditor(id); }
+
+  function confirmDelete(id) {
+    document.getElementById('confirm-overlay').classList.add('active');
+    document.getElementById('confirm-delete-btn').onclick = function () { deleteArticle(id); document.getElementById('confirm-overlay').classList.remove('active'); };
+  }
+  async function deleteArticle(id) {
+    try {
+      await sb.from('comments').delete().eq('article_id', id);
+      await sb.from('likes').delete().eq('article_id', id);
+      var { error } = await sb.from('articles').delete().eq('id', id);
+      if (error) throw error; toast('文章已删除', 'success');
+      if (currentView === 'admin') renderAdmin(); else navigate('home');
+    } catch (e) { toast('删除失败', 'error'); }
+  }
+
+  function importFromFeishu() {
+    var url = document.getElementById('feishu-url').value.trim();
+    var aid = document.getElementById('feishu-app-id').value.trim();
+    var sec = document.getElementById('feishu-app-secret').value.trim();
+    if (!url) { toast('请输入飞书文档链接', 'error'); return; }
+    if (!aid || !sec) { toast('请填写飞书凭证', 'error'); return; }
+    var docId = '', isWiki = false;
+    var dm = url.match(/(?:docx|document)\/([a-zA-Z0-9_-]+)/);
+    if (dm) docId = dm[1];
+    var wm = url.match(/wiki\/([a-zA-Z0-9_-]+)/);
+    if (wm && !docId) { docId = wm[1]; isWiki = true; }
+    if (!docId) { toast('无法识别文档链接', 'error'); return; }
+    toast('正在导入...', 'info');
+    var P = 'https://corsproxy.io/?url=';
+    fetch(P + encodeURIComponent('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_id: aid, app_secret: sec })
+    }).then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.code !== 0) throw new Error(d.msg || '获取token失败');
+      if (isWiki) return fetch(P + encodeURIComponent('https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token=' + docId + '&tenant_access_token=' + d.tenant_access_token)).then(function (r) { return r.json(); }).then(function (w) { if (w.code !== 0) throw new Error(w.msg); return { t: d.tenant_access_token, id: w.data.node.obj_token }; });
+      return { t: d.tenant_access_token, id: docId };
+    })
+    .then(function (r) { return fetch(P + encodeURIComponent('https://open.feishu.cn/open-apis/docx/v1/documents/' + r.id + '/raw_content?tenant_access_token=' + r.t)).then(function (res) { return res.json(); }).then(function (d) { if (d.code !== 0) throw new Error(d.msg); return d.data.content; }); })
+    .then(function (blocks) {
+      document.getElementById('editor-title').value = feishuTitle(blocks) || '飞书文档';
+      document.getElementById('editor-content').value = feishuBlocks(blocks);
+      updatePreview(); toast('导入成功！', 'success');
+    })
+    .catch(function (e) { toast('导入失败: ' + e.message, 'error'); });
+  }
+  function feishuBlocks(b) {
+    if (!b || !b.length) return ''; var r = '';
+    b.forEach(function (x) {
+      if (x.children) { r += feishuBlocks(x.children); return; }
+      var k = x.type;
+      if (/^heading\d+$/.test(k)) { var lv = parseInt(k.replace('heading', '')); r += '#'.repeat(Math.min(lv, 6)) + ' ' + fe(x[k] ? x[k].elements : []) + '\n\n'; }
+      else if (k === 'page' || k === 'text') r += fe(x[k] ? x[k].elements : []) + '\n\n';
+      else if (k === 'bullet') r += '- ' + fe(x.bullet ? x.bullet.elements : []) + '\n';
+      else if (k === 'ordered') r += '1. ' + fe(x.ordered ? x.ordered.elements : []) + '\n';
+      else if (k === 'code') { var lg = x.code && x.code.style ? x.code.style.language : ''; r += '```' + lg + '\n' + fce(x.code ? x.code.elements : []) + '\n```\n\n'; }
+      else if (k === 'quote') r += '> ' + fe(x.quote ? x.quote.elements : []) + '\n\n';
+      else if (k === 'divider') r += '---\n\n';
+      else if (k === 'table') r += ft(x.table);
+      else if (x[k] && x[k].elements) r += fe(x[k].elements) + '\n\n';
+    }); return r.trim();
+  }
+  function fe(els) {
+    if (!els) return ''; var t = '';
+    els.forEach(function (e) {
+      if (e.text_run) { var s = e.text_run.content || ''; if (e.text_run.text_element_style) { var st = e.text_run.text_element_style; if (st.bold) s = '**' + s + '**'; if (st.italic) s = '*' + s + '*'; if (st.code) s = '`' + s + '`'; if (st.link && st.link.url) s = '[' + s + '](' + st.link.url + ')'; } t += s; }
+      else if (e.inline_code) t += '`' + (e.inline_code.content || '') + '`';
+    }); return t;
+  }
+  function fce(els) { if (!els) return ''; return els.map(function (e) { return e.text_run ? (e.text_run.content || '') : ''; }).join(''); }
+  function feishuTitle(b) { if (!b) return ''; for (var i = 0; i < b.length; i++) { if (b[i].type === 'heading1' && b[i].heading1) return fe(b[i].heading1.elements).trim(); } return ''; }
+  function ft(table) {
+    if (!table || !table.rows) return ''; var ks = table.property_keys || [], r = '| ';
+    ks.forEach(function (k) { r += (table.properties[k] ? table.properties[k].name : k) + ' | '; });
+    r += '\n| '; ks.forEach(function () { r += '--- | '; }); r += '\n';
+    table.rows.forEach(function (row) { r += '| '; row.cells.forEach(function (c) { r += fe(c.elements || []) + ' | '; }); r += '\n'; }); return r + '\n';
+  }
+
   window.App = {
-    navigate,
-    goArticle: (id) => navigate('article', { id }),
-    toggleLike,
-    editArticle: (id) => openEditor(id),
-    confirmDelete,
-    openNewArticle: () => openEditor(),
-    closeEditor,
-    saveArticle,
-    handleRegister,
-    handleLogin,
-    handleLogout
+    navigate: navigate, viewArticle: function (id) { navigate('article', id); },
+    doRegister: doRegister, doLogin: doLogin, doLogout: doLogout,
+    toggleDropdown: toggleDropdown, openProfile: openProfile,
+    selectEmoji: selectEmoji, saveProfile: saveProfile,
+    closeEditor: closeEditor, openEditor: openEditor,
+    saveArticle: saveArticle, editArticle: editArticle,
+    confirmDelete: confirmDelete, toggleLike: toggleLike,
+    addComment: addComment, onSearch: onSearch, clearSearch: clearSearch,
+    switchEditorTab: switchTab, toolbarAction: toolbarAction,
+    updatePreview: updatePreview, importFromFeishu: importFromFeishu,
+    refreshCaptcha: genCaptcha
   };
 
-  // ---- Init ----
-  document.addEventListener('DOMContentLoaded', () => {
-    // Particles
-    const canvas = document.getElementById('particles-canvas');
-    if (canvas) new ParticleBackground(canvas);
-
-    // Auth forms
-    document.getElementById('register-form').addEventListener('submit', handleRegister);
-    document.getElementById('login-form').addEventListener('submit', handleLogin);
-
-    // Nav brand
-    document.querySelector('.nav-brand').addEventListener('click', () => navigate('home'));
-
-    // Nav links
-    document.querySelectorAll('.nav-link[data-view]').forEach(link => {
-      link.addEventListener('click', () => navigate(link.dataset.view));
-    });
-
-    // Logout
-    document.getElementById('btn-logout').addEventListener('click', handleLogout);
-
-    // Init UI
-    updateAuthUI();
+  document.addEventListener('DOMContentLoaded', async function () {
+    if (!isConfigured) {
+      document.getElementById('view-home').innerHTML =
+        '<div class="auth-container" style="max-width:620px;margin:3rem auto;">' +
+        '<h2>⚙️ 数据库配置</h2><p class="auth-subtitle">博客需要连接 Supabase 云数据库</p>' +
+        '<div style="text-align:left;background:rgba(15,23,42,0.8);padding:1.5rem;border-radius:8px;margin:1.5rem 0;font-size:0.88rem;line-height:2;color:var(--text-secondary);">' +
+        '<p><strong style="color:var(--accent-cyan);">步骤一：</strong>打开 supabase.com 注册</p>' +
+        '<p><strong style="color:var(--accent-cyan);">步骤二：</strong>创建项目，区域选 Tokyo</p>' +
+        '<p><strong style="color:var(--accent-cyan);">步骤三：</strong>Settings → API 复制 URL 和 key</p>' +
+        '<p><strong style="color:var(--accent-cyan);">步骤四：</strong>SQL Editor 执行建表语句</p>' +
+        '<p><strong style="color:var(--accent-cyan);">步骤五：</strong>Authentication → 关闭 Email Confirmations</p>' +
+        '<p><strong style="color:var(--accent-cyan);">步骤六：</strong>打开 js/app.js 替换前两行配置</p>' +
+        '</div></div>';
+      document.getElementById('view-home').classList.add('active'); return;
+    }
+    try {
+      var { data: { user } } = await sb.auth.getUser();
+      if (user) {
+        currentUser = user;
+        var { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
+        currentProfile = p;
+      }
+    } catch (e) {}
     navigate('home');
+    document.addEventListener('click', function (e) {
+      var dd = document.getElementById('user-dropdown'), ab = document.getElementById('user-avatar-btn');
+      if (dd && ab && !dd.contains(e.target) && !ab.contains(e.target)) closeDropdown();
+    });
+    document.querySelectorAll('.modal-overlay').forEach(function (o) { o.addEventListener('click', function (e) { if (e.target === o) o.classList.remove('active'); }); });
+    var co = document.getElementById('confirm-overlay');
+    if (co) co.addEventListener('click', function (e) { if (e.target === co) co.classList.remove('active'); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { document.querySelectorAll('.modal-overlay.active').forEach(function (m) { m.classList.remove('active'); }); document.getElementById('confirm-overlay').classList.remove('active'); } });
   });
-
 })();
