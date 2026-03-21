@@ -3,8 +3,9 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
 
 (function () {
   'use strict';
-  var sb = supabase.createClient(SB_URL, SB_KEY);
-  var isConfigured = SB_URL !== 'YOUR_SUPABASE_URL';
+  var sb = null;
+  try { sb = supabase.createClient(SB_URL, SB_KEY); } catch(e) { console.error('Supabase init failed:', e); }
+  var isConfigured = sb !== null;
   var currentUser = null;
   var currentProfile = null;
   var currentView = 'home';
@@ -177,6 +178,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
 
   async function renderHome() {
     var c = document.getElementById('articles-grid'), cn = document.getElementById('articles-count'), si = document.getElementById('search-result-info');
+    if (!sb) { c.innerHTML = '<div class="empty-state"><p>数据库未连接，请检查配置</p></div>'; return; }
     c.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
     try {
       var { data: articles, error } = await sb.from('articles').select('*, author:profiles(*)').order('created_at', { ascending: false }).limit(200);
