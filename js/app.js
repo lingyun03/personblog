@@ -232,12 +232,13 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         var ca = c.author || {};
         ch += '<div class="comment-item"><div class="comment-avatar">' + (ca.avatar || '👤') + '</div><div class="comment-body"><div class="comment-author">' + esc(ca.display_name || '匿名') + '</div><div class="comment-text">' + esc(c.text) + '</div><div class="comment-time">' + ago(c.created_at) + '</div></div></div>';
       });
+      // 修复：将 || 改为 : 三元运算符
       c.innerHTML = '<button class="back-btn" onclick="window.App.navigate(\'home\')">← 返回首页</button>' +
         '<div class="detail-header"><h1 class="detail-title">' + esc(a.title) + '</h1>' +
         '<div class="detail-meta"><span class="meta-author"><span class="meta-avatar">' + (au.avatar || '👤') + '</span>' + esc(au.display_name || '匿名') + '</span>' +
         '<span class="card-tag">' + esc(a.tag || '未分类') + '</span><span>' + ago(a.created_at) + '</span></div></div>' +
         '<div class="markdown-body">' + md(a.content) + '</div>' +
-        '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' || 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + (likes ? likes.length : 0) + '</button>' +
+        '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' : 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + (likes ? likes.length : 0) + '</button>' +
         '<span style="color:var(--text-muted);font-size:0.88rem;">💬 ' + (comments ? comments.length : 0) + ' 条评论</span></div>' +
         '<div class="comments-section"><h3>💬 评论</h3>' +
         (currentUser ? '<div class="comment-form"><input id="comment-input" placeholder="写下你的评论..." maxlength="500"><button class="btn btn-sm btn-primary" style="width:auto" onclick="window.App.addComment(\'' + id + '\')">发送</button></div>' :
