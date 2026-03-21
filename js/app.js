@@ -98,6 +98,9 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   function isAdmin() { return !!(currentProfile && currentProfile.role === 'admin'); }
   function canEditArticle(a) { return !!(currentUser && a && (a.author_id === currentUser.id || isAdmin())); }
   function draftKey() { return 'tb_drafts_' + (currentUser ? currentUser.id : 'guest'); }
+  function safeFileName(name) {
+    return String(name || 'file').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_');
+  }
 
   function getDrafts() {
     try { return JSON.parse(localStorage.getItem(draftKey()) || '[]'); } catch (e) { return []; }
@@ -153,8 +156,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     }
     var player = document.getElementById('global-bgm-player');
     if (!player) return;
-    if (bgmSetting && bgmSetting.dataUrl) {
-      player.src = bgmSetting.dataUrl;
+    if (bgmSetting && (bgmSetting.url || bgmSetting.dataUrl)) {
+      player.src = bgmSetting.url || bgmSetting.dataUrl;
       player.volume = 0.35;
       var nameEl = document.getElementById('bgm-current-name');
       if (nameEl) nameEl.textContent = '当前：' + (bgmSetting.name || '已设置');
@@ -172,20 +175,44 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var file = inp && inp.files && inp.files[0];
     if (!file) { toast('请先选择音频文件', 'error'); return; }
     if (file.size > 5 * 1024 * 1024) { toast('音频文件请小于 5MB', 'error'); return; }
-    var fr = new FileReader();
-    fr.onload = async function () {
-      var payload = { name: file.name, dataUrl: fr.result, updatedAt: Date.now() };
-      var savedRemote = false;
-      try {
-        var ret = await sb.from('site_settings').upsert({ key: 'background_music', value: payload }, { onConflict: 'key' });
-        if (!ret.error) savedRemote = true;
-      } catch (e) {}
-      localStorage.setItem('tb_background_music', JSON.stringify(payload));
-      bgmSetting = payload;
-      await loadBackgroundMusic();
-      toast(savedRemote ? '背景音乐已更新' : '已本地启用音乐（可选：创建 site_settings 表实现全员同步）', 'success');
-    };
-    fr.readAsDataURL(file);
+    var payload = { name: file.name, updatedAt: Date.now() };
+    var uploaded = false;
+    try {
+      var path = 'bgm/' + Date.now() + '_' + safeFileName(file.name);
+      var up = await sb.storage.from('blog-assets').upload(path, file, { upsert: true });
+      if (!up.error) {
+        var pub = sb.storage.from('blog-assets').getPublicUrl(path);
+        payload.url = pub.data && pub.data.publicUrl ? pub.data.publicUrl : '';
+        payload.path = path;
+        uploaded = !!payload.url;
+      }
+    } catch (e) {}
+    if (!uploaded) {
+      var fr = new FileReader();
+      fr.onload = async function () {
+        payload.dataUrl = fr.result;
+        var savedRemote = false;
+        try {
+          var ret = await sb.from('site_settings').upsert({ key: 'background_music', value: payload }, { onConflict: 'key' });
+          if (!ret.error) savedRemote = true;
+        } catch (e) {}
+        localStorage.setItem('tb_background_music', JSON.stringify(payload));
+        bgmSetting = payload;
+        await loadBackgroundMusic();
+        toast(savedRemote ? '背景音乐已更新' : '已本地启用音乐（请执行 SQL 脚本开启全员同步）', 'success');
+      };
+      fr.readAsDataURL(file);
+      return;
+    }
+    var savedRemote2 = false;
+    try {
+      var ret2 = await sb.from('site_settings').upsert({ key: 'background_music', value: payload }, { onConflict: 'key' });
+      if (!ret2.error) savedRemote2 = true;
+    } catch (e2) {}
+    localStorage.setItem('tb_background_music', JSON.stringify(payload));
+    bgmSetting = payload;
+    await loadBackgroundMusic();
+    toast(savedRemote2 ? '背景音乐已更新并全员可用' : '音乐已上传，待配置 site_settings 表后全员生效', 'success');
   }
 
   async function clearBackgroundMusic() {
@@ -635,12 +662,28 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { document.querySelectorAll('.modal-overlay.active').forEach(function (m) { m.classList.remove('active'); }); document.getElementById('confirm-overlay').classList.remove('active'); } });
     var editorImageInput = document.getElementById('editor-image-input');
     if (editorImageInput) {
-      editorImageInput.addEventListener('change', function () {
+      editorImageInput.addEventListener('change', async function () {
         var file = editorImageInput.files && editorImageInput.files[0];
         if (!file) return;
         if (file.size > 2 * 1024 * 1024) { toast('图片请小于 2MB', 'error'); editorImageInput.value = ''; return; }
+        if (currentUser) {
+          try {
+            var p = 'images/' + currentUser.id + '/' + Date.now() + '_' + safeFileName(file.name);
+            var upi = await sb.storage.from('blog-assets').upload(p, file, { upsert: true });
+            if (!upi.error) {
+              var pu = sb.storage.from('blog-assets').getPublicUrl(p);
+              var url = pu.data && pu.data.publicUrl ? pu.data.publicUrl : '';
+              if (url) {
+                insMd('![图片](', ')', url);
+                toast('图片上传成功', 'success');
+                editorImageInput.value = '';
+                return;
+              }
+            }
+          } catch (e) {}
+        }
         var fr = new FileReader();
-        fr.onload = function () { insMd('![本地图片](', ')', fr.result); editorImageInput.value = ''; };
+        fr.onload = function () { insMd('![本地图片](', ')', fr.result); editorImageInput.value = ''; toast('已使用本地模式插入图片', 'info'); };
         fr.readAsDataURL(file);
       });
     }
