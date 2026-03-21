@@ -12,6 +12,10 @@
 
 使用任意静态服务器打开根目录 `index.html` 即可（需配置 `js/app.js` 中的 Supabase 密钥）。
 
+## 文章阅读次数
+
+在 Supabase **SQL Editor** 中执行 `supabase/article_view_count.sql`（新增 `view_count` 字段与 `increment_article_view` 函数），管理后台表格会显示每篇文章阅读次数。未执行脚本时，前台仍可正常阅读，仅统计与后台列可能不可用。
+
 ## 页面「没有更新」时
 
 1. **等待 GitHub Pages**：推送后一般 **1～10 分钟** 内生效，可在仓库 **Actions** 或 **Settings → Pages** 查看部署状态。

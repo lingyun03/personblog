@@ -263,13 +263,29 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     return v && (v.url || v.dataUrl) ? v : null;
   }
 
+  function bgmSrcMatches(player, url) {
+    if (!player || !url) return false;
+    var a = (player.currentSrc || player.src || '').trim();
+    if (!a) return false;
+    if (a === url) return true;
+    try {
+      return new URL(a).href === new URL(url, window.location.href).href;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function applyBgmToPlayer(player, setting) {
     if (!player || !setting || !(setting.url || setting.dataUrl)) return;
     var url = setting.url || setting.dataUrl;
     player.volume = 0.35;
     var tryPlay = function () {
-      if (currentView === 'home' && currentUser) player.play().catch(function () {});
+      if (currentUser) player.play().catch(function () {});
     };
+    if (bgmSrcMatches(player, url)) {
+      tryPlay();
+      return;
+    }
     var done = false;
     var oncePlay = function () {
       if (done) return;
@@ -309,12 +325,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (bgmSetting && (bgmSetting.url || bgmSetting.dataUrl)) {
       try { localStorage.setItem('tb_background_music', JSON.stringify(bgmSetting)); } catch (e) {}
       if (nameEl) nameEl.textContent = '当前：' + (bgmSetting.name || '已设置');
-      if (currentView === 'home') {
-        applyBgmToPlayer(player, bgmSetting);
-      } else {
-        /* 非首页：只暂停，勿清空 src，否则后台上传后回首页无法播放 */
-        player.pause();
-      }
+      /* 已登录则全站保持播放（不限首页），直至退出账号 */
+      applyBgmToPlayer(player, bgmSetting);
     } else {
       player.pause();
       player.removeAttribute('src');
@@ -430,11 +442,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     else if (view === 'register') setTimeout(function(){ genCaptcha('register-captcha'); }, 150);
     var mc = document.querySelector('.main-content');
     if (mc) mc.classList.toggle('main-content--article', view === 'article');
-    var bgmEl = document.getElementById('global-bgm-player');
-    if (bgmEl && view !== 'home') {
-      bgmEl.pause();
-    }
-    if (view === 'home' && currentUser) loadBackgroundMusic();
+    if (currentUser) loadBackgroundMusic();
     window.scrollTo(0, 0);
     try {
       if (history.replaceState) {
@@ -594,6 +602,9 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     try {
       var { data: a, error } = await sb.from('articles').select('*, author:profiles(*)').eq('id', id).single();
       if (error) throw error;
+      try {
+        await sb.rpc('increment_article_view', { article_uuid: id });
+      } catch (eInc) {}
       var au = a.author || {};
       var { data: comments } = await sb.from('comments').select('*, author:profiles(*)').eq('article_id', id).order('created_at', { ascending: false });
       var { data: likes } = await sb.from('likes').select('user_id').eq('article_id', id);
@@ -677,13 +688,15 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       document.getElementById('stat-users').textContent = ucount || 0;
       document.getElementById('stat-comments').textContent = ccount || 0;
       var tb = document.getElementById('admin-tbody');
-      if (!articles || !articles.length) { tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem;">暂无文章</td></tr>'; return; }
+      if (!articles || !articles.length) { tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem;">暂无文章</td></tr>'; return; }
       var h = '';
       articles.forEach(function (a) {
         var au = a.author || {};
+        var vc = typeof a.view_count === 'number' ? a.view_count : parseInt(a.view_count, 10) || 0;
         h += '<tr><td class="table-title">' + esc(a.title) + '</td><td><span class="card-tag">' + esc(a.tag || '未分类') + '</span></td>' +
           '<td style="font-size:0.82rem;color:var(--text-muted);">' + esc(au.display_name || '匿名') + '</td>' +
           '<td style="font-size:0.82rem;color:var(--text-muted);">' + ago(a.created_at) + '</td>' +
+          '<td style="font-size:0.82rem;color:var(--accent-cyan);text-align:right;">' + vc + '</td>' +
           '<td class="table-actions"><button class="btn btn-sm btn-secondary" onclick="window.App.editArticle(\'' + a.id + '\')">编辑</button>' +
           '<button class="btn btn-sm btn-danger" onclick="window.App.confirmDelete(\'' + a.id + '\')">删除</button></td></tr>';
       });
