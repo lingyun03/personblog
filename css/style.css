@@ -235,6 +235,13 @@ body.page-auth {
 /* ========== MAIN ========== */
 .main-content { max-width: 1200px; margin: 0 auto; padding: 2rem; }
 
+/* 文章阅读页加宽容器（原 1200px + 侧栏目录导致正文过窄） */
+.main-content.main-content--article {
+  max-width: min(96vw, 1480px);
+  padding-left: clamp(0.75rem, 2vw, 2rem);
+  padding-right: clamp(0.75rem, 2vw, 2rem);
+}
+
 .page-view { display: none; }
 .page-view.active { display: block; animation: fadeIn 0.4s ease; }
 
@@ -462,16 +469,21 @@ body.page-auth {
 }
 
 /* ========== ARTICLE DETAIL ========== */
-.article-detail { max-width: 1180px; margin: 0 auto; padding: 0 1rem; }
+.article-detail { max-width: none; margin: 0 auto; padding: 0; width: 100%; }
 
 .article-detail-layout {
   display: grid;
-  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
-  gap: 2rem;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  gap: 1.25rem 1.75rem;
   align-items: start;
 }
 
-.article-detail-main { min-width: 0; }
+.article-detail-main { min-width: 0; max-width: 100%; }
+
+/* 正文区单独放宽，代码块可读性更好 */
+.article-detail-main .article-markdown {
+  max-width: 100%;
+}
 
 .article-toc {
   position: sticky;

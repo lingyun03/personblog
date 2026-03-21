@@ -254,7 +254,15 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   }
   function openDrafts() { renderDrafts(); document.getElementById('drafts-modal').classList.add('active'); }
 
+  /** 仅登录用户可能播放；访客不请求配置、不加载音频，避免拖慢首屏与浪费流量 */
   async function loadBackgroundMusic() {
+    var player = document.getElementById('global-bgm-player');
+    if (!player) return;
+    if (!currentUser) {
+      player.pause();
+      player.removeAttribute('src');
+      return;
+    }
     bgmSetting = null;
     try {
       var r = await sb.from('site_settings').select('value').eq('key', 'background_music').maybeSingle();
@@ -263,18 +271,25 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (!bgmSetting) {
       try { bgmSetting = JSON.parse(localStorage.getItem('tb_background_music') || 'null'); } catch (e2) { bgmSetting = null; }
     }
-    var player = document.getElementById('global-bgm-player');
-    if (!player) return;
+    var nameEl = document.getElementById('bgm-current-name');
     if (bgmSetting && (bgmSetting.url || bgmSetting.dataUrl)) {
-      player.src = bgmSetting.url || bgmSetting.dataUrl;
-      player.volume = 0.35;
-      var nameEl = document.getElementById('bgm-current-name');
       if (nameEl) nameEl.textContent = '当前：' + (bgmSetting.name || '已设置');
-      if (currentUser) player.play().catch(function () {});
+      if (currentView === 'home') {
+        player.volume = 0.35;
+        var onReady = function () {
+          player.removeEventListener('canplay', onReady);
+          if (currentView === 'home' && currentUser) player.play().catch(function () {});
+        };
+        player.addEventListener('canplay', onReady, { once: true });
+        player.src = bgmSetting.url || bgmSetting.dataUrl;
+      } else {
+        player.pause();
+        player.removeAttribute('src');
+      }
     } else {
+      player.pause();
       player.removeAttribute('src');
-      var nameEl2 = document.getElementById('bgm-current-name');
-      if (nameEl2) nameEl2.textContent = '当前：未设置';
+      if (nameEl) nameEl.textContent = '当前：未设置';
     }
   }
 
@@ -384,7 +399,14 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     else if (view === 'admin') renderAdmin();
     else if (view === 'login') {}
     else if (view === 'register') setTimeout(function(){ genCaptcha('register-captcha'); }, 150);
-    if (view === 'home' && currentUser) { var p = document.getElementById('global-bgm-player'); if (p && p.src) p.play().catch(function () {}); }
+    var mc = document.querySelector('.main-content');
+    if (mc) mc.classList.toggle('main-content--article', view === 'article');
+    var bgmEl = document.getElementById('global-bgm-player');
+    if (bgmEl && view !== 'home') {
+      bgmEl.pause();
+      bgmEl.removeAttribute('src');
+    }
+    if (view === 'home' && currentUser) loadBackgroundMusic();
     window.scrollTo(0, 0);
     try {
       if (history.replaceState) {
@@ -454,7 +476,6 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       currentUser = data.user;
       var { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
       currentProfile = p;
-      await loadBackgroundMusic();
       toast('欢迎回来，' + (currentProfile ? currentProfile.display_name : acc), 'success');
       navigate('home');
     } catch (e) { err.textContent = authErrMsg(e); err.classList.add('show'); }
@@ -856,7 +877,6 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         currentProfile = p;
       }
     } catch (e) { try { await sb.auth.signOut(); } catch (_) {} }
-    await loadBackgroundMusic();
     var deepArticle = null;
     try { deepArticle = new URLSearchParams(window.location.search).get('article'); } catch (e) {}
     if (deepArticle) navigate('article', deepArticle);
