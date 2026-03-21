@@ -708,7 +708,6 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   async function openEditor(aid) {
     editingArticleId = aid || null;
     var te = document.getElementById('editor-title'), tg = document.getElementById('editor-tag'), tc = document.getElementById('editor-content');
-    document.getElementById('feishu-import-section').style.display = (currentProfile && currentProfile.role === 'admin') ? '' : 'none';
     if (aid) {
       document.getElementById('editor-modal-title').textContent = '编辑文章';
       var { data: a } = await sb.from('articles').select('*').eq('id', aid).single();
@@ -718,20 +717,52 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       document.getElementById('editor-modal-title').textContent = '写文章';
       te.value = ''; tg.value = ''; tc.value = '';
       document.getElementById('editor-preview').innerHTML = '<div class="markdown-body" style="color:var(--text-muted);text-align:center;padding:3rem;">预览区域</div>';
+      updateEditorStats();
     }
     switchTab('edit'); document.getElementById('editor-modal').classList.add('active');
   }
-  function closeEditor() { document.getElementById('editor-modal').classList.remove('active'); editingArticleId = null; }
+  function closeEditor() {
+    var em = document.querySelector('#editor-modal .modal.modal--editor');
+    if (em) em.classList.remove('modal--editor-full');
+    document.getElementById('editor-modal').classList.remove('active');
+    editingArticleId = null;
+  }
   function switchTab(t) {
     document.querySelectorAll('.editor-tab').forEach(function (e) { e.classList.toggle('active', e.dataset.tab === t); });
     document.getElementById('editor-edit-area').style.display = t === 'edit' ? '' : 'none';
     document.getElementById('editor-preview').style.display = t === 'preview' ? '' : 'none';
     if (t === 'preview') updatePreview();
   }
+  function updateEditorStats() {
+    var ta = document.getElementById('editor-content');
+    if (!ta) return;
+    var v = ta.value;
+    var lines = v.length ? v.split('\n').length : 1;
+    var ch = v.length;
+    var elCh = document.getElementById('editor-stat-chars');
+    var elLn = document.getElementById('editor-stat-lines');
+    var elRd = document.getElementById('editor-stat-read');
+    if (elCh) elCh.textContent = String(ch);
+    if (elLn) elLn.textContent = String(lines);
+    if (elRd) elRd.textContent = v.length ? String(estimateReadingTime(v)) : '0';
+  }
+
   function updatePreview() {
     var raw = document.getElementById('editor-content').value;
     var r = md(raw);
     document.getElementById('editor-preview').innerHTML = '<div class="markdown-body">' + r.html + '</div>';
+    updateEditorStats();
+  }
+
+  function insertAtCursor(text) {
+    var ta = document.getElementById('editor-content');
+    if (!ta) return;
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    ta.value = ta.value.substring(0, s) + text + ta.value.substring(e);
+    ta.focus();
+    var pos = s + text.length;
+    ta.setSelectionRange(pos, pos);
+    updatePreview();
   }
 
   function insMd(b, a, p) {
@@ -740,6 +771,19 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     ta.value = ta.value.substring(0, s) + b + sel + (a || '') + ta.value.substring(e);
     ta.focus(); ta.setSelectionRange(s + b.length, s + b.length + sel.length); updatePreview();
   }
+
+  function toggleEditorFullscreen() {
+    var m = document.querySelector('#editor-modal .modal.modal--editor');
+    if (m) m.classList.toggle('modal--editor-full');
+  }
+
+  function onEditorKeydown(ev) {
+    if (!ev) return;
+    if (ev.ctrlKey && (ev.key === 'b' || ev.key === 'B')) { ev.preventDefault(); toolbarAction('bold'); return; }
+    if (ev.ctrlKey && (ev.key === 'i' || ev.key === 'I')) { ev.preventDefault(); toolbarAction('italic'); return; }
+    if (ev.key === 'Tab') { ev.preventDefault(); insertAtCursor('  '); return; }
+  }
+
   function toolbarAction(act) {
     if (act === 'image') {
       var imageInput = document.getElementById('editor-image-input');
@@ -748,6 +792,11 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     }
     if (act === 'strike') { insMd('~~', '~~', '删除线'); return; }
     if (act === 'task') { insMd('- [ ] ', '', '任务'); return; }
+    if (act === 'codepy') { insMd('\n```python\n', '\n```\n', 'print("hello")'); return; }
+    if (act === 'codebash') { insMd('\n```bash\n', '\n```\n', 'echo hello'); return; }
+    if (act === 'codets') { insMd('\n```typescript\n', '\n```\n', 'const x: number = 1'); return; }
+    if (act === 'codejson') { insMd('\n```json\n', '\n```\n', '{\n  "key": "value"\n}'); return; }
+    if (act === 'codemermaid') { insMd('\n```mermaid\n', '\n```\n', 'graph LR\n  A-->B'); return; }
     if (act === 'table') {
       var ta = document.getElementById('editor-content');
       var ins = '\n| 列1 | 列2 |\n| --- | --- |\n| 内容A | 内容B |\n';
@@ -755,7 +804,13 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       ta.value = ta.value.substring(0, s) + ins + ta.value.substring(s);
       ta.focus(); ta.setSelectionRange(s + ins.length, s + ins.length); updatePreview(); return;
     }
-    var m = { h1: ['# ', '', '一级标题'], h2: ['## ', '', '二级标题'], h3: ['### ', '', '三级标题'], bold: ['**', '**', '粗体'], italic: ['*', '*', '斜体'], code: ['`', '`', '代码'], codeblock: ['\n```js\n', '\n```\n', 'console.log(1)'], quote: ['> ', '', '引用'], ul: ['- ', '', '列表项'], ol: ['1. ', '', '列表项'], link: ['[', '](https://)', '链接'], image: ['![', '](https://)', '图片'], hr: ['\n---\n', '', ''] };
+    var m = {
+      h1: ['# ', '', '一级标题'], h2: ['## ', '', '二级标题'], h3: ['### ', '', '三级标题'], h4: ['#### ', '', '四级标题'],
+      bold: ['**', '**', '粗体'], italic: ['*', '*', '斜体'], code: ['`', '`', '代码'],
+      codeblock: ['\n```js\n', '\n```\n', 'console.log(1)'],
+      quote: ['> ', '', '引用'], ul: ['- ', '', '列表项'], ol: ['1. ', '', '列表项'],
+      link: ['[', '](https://)', '链接'], image: ['![', '](https://)', '图片'], hr: ['\n---\n', '', '']
+    };
     var r = m[act]; if (r) insMd(r[0], r[1], r[2]);
   }
 
@@ -815,121 +870,6 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     } catch (e) { toast('删除失败', 'error'); }
   }
 
-  /** 飞书 Open API 需从浏览器经 CORS 代理访问；多线路回退，避免单点 corsproxy.io 不可用 */
-  function feishuProxyUrls(targetUrl) {
-    var e = encodeURIComponent(targetUrl);
-    return [
-      'https://corsproxy.io/?' + e,
-      'https://corsproxy.io/?url=' + e,
-      'https://api.codetabs.com/v1/proxy?quest=' + e,
-      'https://api.allorigins.win/raw?url=' + e
-    ];
-  }
-
-  async function feishuFetchJson(targetUrl, init) {
-    init = init || {};
-    var method = (init.method || 'GET').toUpperCase();
-    var urls = feishuProxyUrls(targetUrl);
-    var lastErr = null;
-    for (var i = 0; i < urls.length; i++) {
-      if (method === 'POST' && i >= 2) break;
-      try {
-        var r = await fetch(urls[i], init);
-        if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
-        var txt = await r.text();
-        var j = JSON.parse(txt);
-        return j;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw lastErr || new Error('网络请求失败（请检查网络或稍后重试）');
-  }
-
-  async function importFromFeishu() {
-    var url = document.getElementById('feishu-url').value.trim();
-    var aid = document.getElementById('feishu-app-id').value.trim();
-    var sec = document.getElementById('feishu-app-secret').value.trim();
-    if (!url) { toast('请输入飞书文档链接', 'error'); return; }
-    if (!aid || !sec) { toast('请填写飞书凭证', 'error'); return; }
-    var docId = '';
-    var isWiki = false;
-    var mDocx = url.match(/\/docx\/([a-zA-Z0-9_-]+)/);
-    var mDoc = url.match(/\/document\/([a-zA-Z0-9_-]+)/);
-    var mWiki = url.match(/\/wiki\/([a-zA-Z0-9_-]+)/);
-    if (mDocx) docId = mDocx[1];
-    else if (mDoc) docId = mDoc[1];
-    else if (mWiki) { docId = mWiki[1]; isWiki = true; }
-    if (!docId) { toast('无法识别文档链接（需包含 /docx/、/document/ 或 /wiki/ 路径）', 'error'); return; }
-    toast('正在导入…', 'info');
-    try {
-      var tokenUrl = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal';
-      var d = await feishuFetchJson(tokenUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app_id: aid, app_secret: sec })
-      });
-      if (d.code !== 0 || !d.tenant_access_token) throw new Error(d.msg || '获取 tenant_access_token 失败');
-      var t = d.tenant_access_token;
-      var realId = docId;
-      if (isWiki) {
-        var wikiUrl = 'https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token=' + encodeURIComponent(docId) + '&tenant_access_token=' + encodeURIComponent(t);
-        var w = await feishuFetchJson(wikiUrl, { method: 'GET' });
-        if (w.code !== 0) throw new Error(w.msg || 'Wiki 节点解析失败');
-        if (!w.data || !w.data.node || !w.data.node.obj_token) throw new Error('Wiki 节点未找到关联的云文档');
-        realId = w.data.node.obj_token;
-      }
-      var rawUrl = 'https://open.feishu.cn/open-apis/docx/v1/documents/' + encodeURIComponent(realId) + '/raw_content?tenant_access_token=' + encodeURIComponent(t);
-      var raw = await feishuFetchJson(rawUrl, { method: 'GET' });
-      if (raw.code !== 0) throw new Error(raw.msg || '获取文档正文失败');
-      var blocks = raw.data && raw.data.content;
-      if (!blocks) throw new Error('文档内容为空或接口无 content 字段');
-      if (!Array.isArray(blocks)) blocks = [];
-      document.getElementById('editor-title').value = feishuTitle(blocks) || '飞书文档';
-      document.getElementById('editor-content').value = feishuBlocks(blocks);
-      updatePreview();
-      toast('导入成功！', 'success');
-    } catch (e) {
-      var msg = (e && e.message) ? e.message : String(e);
-      if (/Failed to fetch|NetworkError|网络请求失败/.test(msg)) {
-        toast('导入失败：代理或网络不可用，请稍后重试，或复制文档内容粘贴到编辑器。', 'error');
-      } else {
-        toast('导入失败：' + msg, 'error');
-      }
-    }
-  }
-  function feishuBlocks(b) {
-    if (!b || !b.length) return ''; var r = '';
-    b.forEach(function (x) {
-      if (x.children) { r += feishuBlocks(x.children); return; }
-      var k = x.type;
-      if (/^heading\d+$/.test(k)) { var lv = parseInt(k.replace('heading', '')); r += '#'.repeat(Math.min(lv, 6)) + ' ' + fe(x[k] ? x[k].elements : []) + '\n\n'; }
-      else if (k === 'page' || k === 'text') r += fe(x[k] ? x[k].elements : []) + '\n\n';
-      else if (k === 'bullet') r += '- ' + fe(x.bullet ? x.bullet.elements : []) + '\n';
-      else if (k === 'ordered') r += '1. ' + fe(x.ordered ? x.ordered.elements : []) + '\n';
-      else if (k === 'code') { var lg = x.code && x.code.style ? x.code.style.language : ''; r += '```' + lg + '\n' + fce(x.code ? x.code.elements : []) + '\n```\n\n'; }
-      else if (k === 'quote') r += '> ' + fe(x.quote ? x.quote.elements : []) + '\n\n';
-      else if (k === 'divider') r += '---\n\n';
-      else if (k === 'table') r += ft(x.table);
-      else if (x[k] && x[k].elements) r += fe(x[k].elements) + '\n\n';
-    }); return r.trim();
-  }
-  function fe(els) {
-    if (!els) return ''; var t = '';
-    els.forEach(function (e) {
-      if (e.text_run) { var s = e.text_run.content || ''; if (e.text_run.text_element_style) { var st = e.text_run.text_element_style; if (st.bold) s = '**' + s + '**'; if (st.italic) s = '*' + s + '*'; if (st.code) s = '`' + s + '`'; if (st.link && st.link.url) s = '[' + s + '](' + st.link.url + ')'; } t += s; }
-      else if (e.inline_code) t += '`' + (e.inline_code.content || '') + '`';
-    }); return t;
-  }
-  function fce(els) { if (!els) return ''; return els.map(function (e) { return e.text_run ? (e.text_run.content || '') : ''; }).join(''); }
-  function feishuTitle(b) { if (!b) return ''; for (var i = 0; i < b.length; i++) { if (b[i].type === 'heading1' && b[i].heading1) return fe(b[i].heading1.elements).trim(); } return ''; }
-  function ft(table) {
-    if (!table || !table.rows) return ''; var ks = table.property_keys || [], r = '| ';
-    ks.forEach(function (k) { r += (table.properties[k] ? table.properties[k].name : k) + ' | '; });
-    r += '\n| '; ks.forEach(function () { r += '--- | '; }); r += '\n';
-    table.rows.forEach(function (row) { r += '| '; row.cells.forEach(function (c) { r += fe(c.elements || []) + ' | '; }); r += '\n'; }); return r + '\n';
-  }
-
   window.App = {
     navigate: navigate, goBack: goBack, viewArticle: function (id) { navigate('article', id); },
     doRegister: doRegister, doLogin: doLogin, doLogout: doLogout,
@@ -941,7 +881,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     confirmDelete: confirmDelete, toggleLike: toggleLike,
     addComment: addComment, onSearch: onSearch, clearSearch: clearSearch,
     switchEditorTab: switchTab, toolbarAction: toolbarAction,
-    updatePreview: updatePreview, importFromFeishu: importFromFeishu,
+    updatePreview: updatePreview, updateEditorStats: updateEditorStats,
+    toggleEditorFullscreen: toggleEditorFullscreen, onEditorKeydown: onEditorKeydown,
     refreshCaptcha: genCaptcha,
     saveDraft: saveDraft, openDrafts: openDrafts, useDraft: useDraft, deleteDraft: deleteDraft,
     saveBackgroundMusic: saveBackgroundMusic, clearBackgroundMusic: clearBackgroundMusic,

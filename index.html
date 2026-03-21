@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
   <!-- 更新前端后请递增 ?v= 以绕过浏览器缓存 -->
-  <link rel="stylesheet" href="css/style.css?v=20260327a">
-  <link rel="stylesheet" href="css/home.css?v=20260327a">
+  <link rel="stylesheet" href="css/style.css?v=20260327b">
+  <link rel="stylesheet" href="css/home.css?v=20260327b">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 </head>
 <body>
@@ -107,9 +107,9 @@
             <p>支持完整 Markdown 语法，实时预览，所见即所得的创作体验</p>
           </div>
           <div class="feature-card feature-card--accent-b reveal-on-scroll">
-            <div class="feature-icon">📄</div>
-            <h3>飞书文档导入</h3>
-            <p>一键导入飞书文档和知识库内容，无缝迁移你的技术笔记</p>
+            <div class="feature-icon">📊</div>
+            <h3>写作增强</h3>
+            <p>字数与阅读时长统计、多语言代码块片段、Mermaid 图、快捷键与沉浸全屏，专注长文创作</p>
           </div>
           <div class="feature-card feature-card--accent-c reveal-on-scroll">
             <div class="feature-icon">💬</div>
@@ -222,53 +222,66 @@
 
 <div class="modal-overlay" id="editor-modal">
   <div class="modal modal--editor">
-    <h3>✏️ <span id="editor-modal-title">写文章</span></h3>
-    <p class="editor-hint">支持 GitHub 风格 Markdown：多级标题、粗体/斜体、行内代码与带语言代码块、表格、任务列表、删除线、引用与列表等。</p>
+    <div class="editor-modal-head">
+      <h3>✏️ <span id="editor-modal-title">写文章</span></h3>
+      <button type="button" class="editor-fullscreen-btn" onclick="window.App.toggleEditorFullscreen()" title="沉浸全屏（再点退出）">⛶</button>
+    </div>
+    <p class="editor-hint">支持 GitHub 风格 Markdown：多级标题、粗体/斜体、行内代码与带语言代码块、表格、任务列表、Mermaid、引用与列表等。<strong>Ctrl+B</strong> 粗体、<strong>Ctrl+I</strong> 斜体、<strong>Tab</strong> 插入两空格缩进。</p>
     <div class="form-group"><label>文章标题</label><input type="text" id="editor-title" placeholder="输入文章标题..." maxlength="100"></div>
     <div class="form-group"><label>标签分类</label><input type="text" id="editor-tag" placeholder="如：前端、Python、教程..." maxlength="20"></div>
     <div class="editor-tabs">
       <button class="editor-tab active" data-tab="edit" onclick="window.App.switchEditorTab('edit')">📝 编辑</button>
       <button class="editor-tab" data-tab="preview" onclick="window.App.switchEditorTab('preview')">👁️ 预览</button>
     </div>
-    <div class="editor-toolbar">
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('h1')" title="一级标题">H1</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('h2')" title="二级标题">H2</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('h3')" title="三级标题">H3</button>
-      <div class="toolbar-sep"></div>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('bold')" title="粗体"><b>B</b></button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('italic')" title="斜体"><i>I</i></button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('code')" title="行内代码">&lt;/&gt;</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('codeblock')" title="代码块">{ }</button>
-      <div class="toolbar-sep"></div>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('quote')" title="引用">❝</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('ul')" title="无序列表">•</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('ol')" title="有序列表">1.</button>
-      <div class="toolbar-sep"></div>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('link')" title="链接">🔗</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('image')" title="图片">🖼️</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('hr')" title="分割线">—</button>
-      <div class="toolbar-sep"></div>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('strike')" title="删除线"><s>S</s></button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('task')" title="任务">☐</button>
-      <button class="toolbar-btn" onclick="window.App.toolbarAction('table')" title="插入表格">表</button>
+    <div class="editor-toolbar-wrap">
+      <div class="editor-toolbar">
+        <span class="toolbar-group-label">标题</span>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('h1')" title="一级标题">H1</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('h2')" title="二级标题">H2</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('h3')" title="三级标题">H3</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('h4')" title="四级标题">H4</button>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-group-label">格式</span>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('bold')" title="粗体 Ctrl+B"><b>B</b></button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('italic')" title="斜体 Ctrl+I"><i>I</i></button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('code')" title="行内代码">&lt;/&gt;</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('strike')" title="删除线"><s>S</s></button>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-group-label">代码</span>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('codeblock')" title="JavaScript 代码块">JS</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('codepy')" title="Python 代码块">Py</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('codets')" title="TypeScript 代码块">TS</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('codebash')" title="Bash 代码块">Sh</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('codejson')" title="JSON 代码块">{ }</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('codemermaid')" title="Mermaid 图">🧭</button>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-group-label">结构</span>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('quote')" title="引用">❝</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('ul')" title="无序列表">•</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('ol')" title="有序列表">1.</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('task')" title="任务">☐</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('hr')" title="分割线">—</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('table')" title="插入表格">表</button>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-group-label">媒体</span>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('link')" title="链接">🔗</button>
+        <button class="toolbar-btn" onclick="window.App.toolbarAction('image')" title="图片">🖼️</button>
+      </div>
+      <div class="editor-stats" id="editor-stats" aria-live="polite">
+        <span class="editor-stat"><span id="editor-stat-chars">0</span> 字</span>
+        <span class="editor-stat-sep">·</span>
+        <span class="editor-stat"><span id="editor-stat-lines">1</span> 行</span>
+        <span class="editor-stat-sep">·</span>
+        <span class="editor-stat">约 <span id="editor-stat-read">0</span> 分钟阅读</span>
+      </div>
     </div>
     <div class="editor-content-area">
       <div id="editor-edit-area">
-        <textarea class="editor-textarea" id="editor-content" placeholder="在这里使用 Markdown 编写文章内容..." oninput="window.App.updatePreview()"></textarea>
+        <textarea class="editor-textarea" id="editor-content" placeholder="在这里使用 Markdown 编写文章内容..." oninput="window.App.updatePreview()" onkeydown="window.App.onEditorKeydown(event)"></textarea>
       </div>
       <div class="editor-preview" id="editor-preview">
         <div class="markdown-body" style="color:var(--text-muted);text-align:center;padding:3rem;">预览区域</div>
       </div>
-    </div>
-    <div class="feishu-import" id="feishu-import-section">
-      <h4>📄 导入飞书文档</h4>
-      <div class="form-hint">支持飞书文档(docx)和知识库(wiki)链接</div>
-      <div class="feishu-row"><input type="text" id="feishu-url" placeholder="粘贴飞书文档链接..."></div>
-      <div class="feishu-row">
-        <input type="text" id="feishu-app-id" placeholder="飞书 App ID">
-        <input type="password" id="feishu-app-secret" placeholder="飞书 App Secret">
-      </div>
-      <button class="btn btn-secondary btn-sm" onclick="window.App.importFromFeishu()">📥 导入飞书文档</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="window.App.closeEditor()">取消</button>
@@ -341,8 +354,8 @@
 <input type="file" id="editor-image-input" accept="image/*" style="display:none;">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/particles.js?v=20260327a"></script>
-<script src="js/app.js?v=20260327a"></script>
-<script src="js/home.js?v=20260327a"></script>
+<script src="js/particles.js?v=20260327b"></script>
+<script src="js/app.js?v=20260327b"></script>
+<script src="js/home.js?v=20260327b"></script>
 </body>
 </html>
