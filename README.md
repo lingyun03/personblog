@@ -11,3 +11,9 @@
 ## 本地开发
 
 使用任意静态服务器打开根目录 `index.html` 即可（需配置 `js/app.js` 中的 Supabase 密钥）。
+
+## 页面「没有更新」时
+
+1. **等待 GitHub Pages**：推送后一般 **1～10 分钟** 内生效，可在仓库 **Actions** 或 **Settings → Pages** 查看部署状态。
+2. **强制刷新**：Windows `Ctrl + F5`，Mac `Cmd + Shift + R`；或清掉本站缓存后再打开。
+3. **静态资源缓存**：`index.html` 里 CSS/JS 已带 `?v=...`，**以后每次改样式/脚本请把该版本号改一下**再推送，访客才会拿到新文件。
