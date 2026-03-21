@@ -11,6 +11,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   var currentView = 'home';
   var searchQuery = '';
   var editingArticleId = null;
+  var currentArticle = null;
+  var bgmSetting = null;
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function ago(d) {
@@ -44,18 +46,182 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     cb(); return H;
   }
   function il(t) {
+    function normalizeUrl(u) {
+      if (!u) return '#';
+      var s = String(u).trim();
+      if (!s) return '#';
+      if (/^(javascript|data):/i.test(s)) return '#';
+      if (/^(#|\/|\.\/|\.\.\/)/.test(s)) return s;
+      if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(s)) return s;
+      if (s.indexOf('//') === 0) return 'https:' + s;
+      if (/^(github\.com|www\.github\.com|github\.io|www\.github\.io)\b/i.test(s)) return 'https://' + s;
+      return 'https://' + s;
+    }
     t = t.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-    t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
-    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (_, alt, url) {
+      return '<img src="' + normalizeUrl(url) + '" alt="' + alt + '">';
+    });
+    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, text, url) {
+      return '<a href="' + normalizeUrl(url) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
+    });
+    t = t.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<]+)/g, function (_, pre, url) {
+      var full = /^https?:\/\//i.test(url) ? url : ('https://' + url);
+      return pre + '<a href="' + normalizeUrl(full) + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+    });
     t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
     return t;
+  }
+
+  function authErrMsg(e) {
+    var m = ((e && e.message) ? e.message : '').toLowerCase();
+    if (m.indexOf('email not confirmed') !== -1) return '账号已注册但未激活：请在 Supabase 关闭 Email Confirmations，或改用真实邮箱完成验证。';
+    if (m.indexOf('invalid login credentials') !== -1) return '账号或密码错误';
+    if (m.indexOf('too many requests') !== -1) return '操作过于频繁，请稍后再试';
+    return (e && e.message) ? e.message : '请稍后重试';
   }
 
   function toast(m, t) {
     var c = document.getElementById('toast-container'), e = document.createElement('div');
     e.className = 'toast ' + (t || 'info'); e.textContent = m; c.appendChild(e);
     setTimeout(function () { if (e.parentNode) e.parentNode.removeChild(e); }, 3000);
+  }
+
+  function togglePassword(inputId, btn) {
+    var i = document.getElementById(inputId);
+    if (!i) return;
+    var show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    if (btn) btn.textContent = show ? '隐藏' : '显示';
+  }
+
+  function isAdmin() { return !!(currentProfile && currentProfile.role === 'admin'); }
+  function canEditArticle(a) { return !!(currentUser && a && (a.author_id === currentUser.id || isAdmin())); }
+  function draftKey() { return 'tb_drafts_' + (currentUser ? currentUser.id : 'guest'); }
+  function safeFileName(name) {
+    return String(name || 'file').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_');
+  }
+
+  function getDrafts() {
+    try { return JSON.parse(localStorage.getItem(draftKey()) || '[]'); } catch (e) { return []; }
+  }
+  function setDrafts(list) { localStorage.setItem(draftKey(), JSON.stringify(list || [])); }
+  function saveDraft() {
+    if (!currentUser) { toast('请先登录', 'error'); return; }
+    var title = document.getElementById('editor-title').value.trim();
+    var tag = document.getElementById('editor-tag').value.trim();
+    var content = document.getElementById('editor-content').value.trim();
+    if (!title && !content) { toast('草稿内容为空', 'error'); return; }
+    var arr = getDrafts();
+    arr.unshift({ id: 'd_' + Date.now(), title: title || '未命名草稿', tag: tag || '', content: content || '', updatedAt: Date.now() });
+    setDrafts(arr.slice(0, 20));
+    toast('草稿已保存', 'success');
+  }
+  function deleteDraft(id) {
+    setDrafts(getDrafts().filter(function (x) { return x.id !== id; }));
+    renderDrafts();
+  }
+  function useDraft(id) {
+    var d = getDrafts().find(function (x) { return x.id === id; });
+    if (!d) return;
+    document.getElementById('editor-title').value = d.title || '';
+    document.getElementById('editor-tag').value = d.tag || '';
+    document.getElementById('editor-content').value = d.content || '';
+    updatePreview();
+    document.getElementById('drafts-modal').classList.remove('active');
+    toast('草稿已加载', 'success');
+  }
+  function renderDrafts() {
+    var box = document.getElementById('drafts-list');
+    if (!box) return;
+    var arr = getDrafts();
+    if (!arr.length) { box.innerHTML = '<div class="empty-state"><p>暂无草稿</p></div>'; return; }
+    box.innerHTML = arr.map(function (d) {
+      return '<div class="comment-item"><div class="comment-body"><div class="comment-author">' + esc(d.title) + '</div>' +
+      '<div class="comment-time">' + new Date(d.updatedAt).toLocaleString('zh-CN') + '</div></div>' +
+      '<button class="btn btn-sm btn-secondary" onclick="window.App.useDraft(\'' + d.id + '\')">使用</button>' +
+      '<button class="btn btn-sm btn-danger" onclick="window.App.deleteDraft(\'' + d.id + '\')">删除</button></div>';
+    }).join('');
+  }
+  function openDrafts() { renderDrafts(); document.getElementById('drafts-modal').classList.add('active'); }
+
+  async function loadBackgroundMusic() {
+    bgmSetting = null;
+    try {
+      var r = await sb.from('site_settings').select('value').eq('key', 'background_music').maybeSingle();
+      if (!r.error && r.data && r.data.value) bgmSetting = r.data.value;
+    } catch (e) {}
+    if (!bgmSetting) {
+      try { bgmSetting = JSON.parse(localStorage.getItem('tb_background_music') || 'null'); } catch (e2) { bgmSetting = null; }
+    }
+    var player = document.getElementById('global-bgm-player');
+    if (!player) return;
+    if (bgmSetting && (bgmSetting.url || bgmSetting.dataUrl)) {
+      player.src = bgmSetting.url || bgmSetting.dataUrl;
+      player.volume = 0.35;
+      var nameEl = document.getElementById('bgm-current-name');
+      if (nameEl) nameEl.textContent = '当前：' + (bgmSetting.name || '已设置');
+      if (currentUser) player.play().catch(function () {});
+    } else {
+      player.removeAttribute('src');
+      var nameEl2 = document.getElementById('bgm-current-name');
+      if (nameEl2) nameEl2.textContent = '当前：未设置';
+    }
+  }
+
+  async function saveBackgroundMusic() {
+    if (!isAdmin()) { toast('仅管理员可操作', 'error'); return; }
+    var inp = document.getElementById('bgm-file-input');
+    var file = inp && inp.files && inp.files[0];
+    if (!file) { toast('请先选择音频文件', 'error'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast('音频文件请小于 5MB', 'error'); return; }
+    var payload = { name: file.name, updatedAt: Date.now() };
+    var uploaded = false;
+    try {
+      var path = 'bgm/' + Date.now() + '_' + safeFileName(file.name);
+      var up = await sb.storage.from('blog-assets').upload(path, file, { upsert: true });
+      if (!up.error) {
+        var pub = sb.storage.from('blog-assets').getPublicUrl(path);
+        payload.url = pub.data && pub.data.publicUrl ? pub.data.publicUrl : '';
+        payload.path = path;
+        uploaded = !!payload.url;
+      }
+    } catch (e) {}
+    if (!uploaded) {
+      var fr = new FileReader();
+      fr.onload = async function () {
+        payload.dataUrl = fr.result;
+        var savedRemote = false;
+        try {
+          var ret = await sb.from('site_settings').upsert({ key: 'background_music', value: payload }, { onConflict: 'key' });
+          if (!ret.error) savedRemote = true;
+        } catch (e) {}
+        localStorage.setItem('tb_background_music', JSON.stringify(payload));
+        bgmSetting = payload;
+        await loadBackgroundMusic();
+        toast(savedRemote ? '背景音乐已更新' : '已本地启用音乐（请执行 SQL 脚本开启全员同步）', 'success');
+      };
+      fr.readAsDataURL(file);
+      return;
+    }
+    var savedRemote2 = false;
+    try {
+      var ret2 = await sb.from('site_settings').upsert({ key: 'background_music', value: payload }, { onConflict: 'key' });
+      if (!ret2.error) savedRemote2 = true;
+    } catch (e2) {}
+    localStorage.setItem('tb_background_music', JSON.stringify(payload));
+    bgmSetting = payload;
+    await loadBackgroundMusic();
+    toast(savedRemote2 ? '背景音乐已更新并全员可用' : '音乐已上传，待配置 site_settings 表后全员生效', 'success');
+  }
+
+  async function clearBackgroundMusic() {
+    if (!isAdmin()) { toast('仅管理员可操作', 'error'); return; }
+    try { await sb.from('site_settings').delete().eq('key', 'background_music'); } catch (e) {}
+    localStorage.removeItem('tb_background_music');
+    bgmSetting = null;
+    await loadBackgroundMusic();
+    toast('背景音乐已关闭', 'info');
   }
 
   var captchaCode = '', CC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -84,6 +250,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     else if (view === 'admin') renderAdmin();
     else if (view === 'login') {}
     else if (view === 'register') setTimeout(function(){ genCaptcha('register-captcha'); }, 150);
+    if (view === 'home' && currentUser) { var p = document.getElementById('global-bgm-player'); if (p && p.src) p.play().catch(function () {}); }
     window.scrollTo(0, 0);
   }
 
@@ -117,8 +284,16 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         options: { data: { displayName: '用户' + acc.slice(-4), avatar: '👤', bio: '', role: role } }
       });
       if (error) throw error;
-      toast('注册成功，请登录', 'success'); navigate('login');
-    } catch (e) { err.textContent = '注册失败：' + (e.message || '请重试'); err.classList.add('show'); }
+      if (data && data.user && !data.session) {
+        toast('注册成功，但账号需激活后才能登录', 'info');
+        err.textContent = '检测到当前项目开启了邮箱激活，但你使用的是虚拟账号邮箱。请在 Supabase -> Authentication -> Providers 关闭 Email Confirmations。';
+        err.classList.add('show');
+        navigate('login');
+        return;
+      }
+      toast('注册成功，请登录', 'success');
+      navigate('login');
+    } catch (e) { err.textContent = '注册失败：' + authErrMsg(e); err.classList.add('show'); }
   }
 
   async function doLogin() {
@@ -132,13 +307,15 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       currentUser = data.user;
       var { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
       currentProfile = p;
+      await loadBackgroundMusic();
       toast('欢迎回来，' + (currentProfile ? currentProfile.display_name : acc), 'success');
       navigate('home');
-    } catch (e) { err.textContent = '账号或密码错误'; err.classList.add('show'); }
+    } catch (e) { err.textContent = authErrMsg(e); err.classList.add('show'); }
   }
 
   async function doLogout() {
     await sb.auth.signOut(); currentUser = null; currentProfile = null;
+    var player = document.getElementById('global-bgm-player'); if (player) player.pause();
     closeDropdown(); toast('已退出登录', 'info'); navigate('home');
   }
 
@@ -224,6 +401,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       var au = a.author || {};
       var { data: comments } = await sb.from('comments').select('*, author:profiles(*)').eq('article_id', id).order('created_at', { ascending: false });
       var { data: likes } = await sb.from('likes').select('user_id').eq('article_id', id);
+      currentArticle = a;
       var liked = currentUser && likes ? likes.some(function (l) { return l.user_id === currentUser.id; }) : false;
       var ch = '';
       if (!comments || !comments.length) ch = '<p style="color:var(--text-muted);font-size:0.88rem;">暂无评论</p>';
@@ -231,13 +409,13 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         var ca = c.author || {};
         ch += '<div class="comment-item"><div class="comment-avatar">' + (ca.avatar || '👤') + '</div><div class="comment-body"><div class="comment-author">' + esc(ca.display_name || '匿名') + '</div><div class="comment-text">' + esc(c.text) + '</div><div class="comment-time">' + ago(c.created_at) + '</div></div></div>';
       });
-      // 修复：将 || 改为 : 三元运算符
+      var editBtn = canEditArticle(a) ? '<button class="btn btn-sm btn-secondary" onclick="window.App.editArticle(\'' + id + '\')">✏️ 编辑本文</button>' : '';
       c.innerHTML = '<button class="back-btn" onclick="window.App.navigate(\'home\')">← 返回首页</button>' +
         '<div class="detail-header"><h1 class="detail-title">' + esc(a.title) + '</h1>' +
         '<div class="detail-meta"><span class="meta-author"><span class="meta-avatar">' + (au.avatar || '👤') + '</span>' + esc(au.display_name || '匿名') + '</span>' +
         '<span class="card-tag">' + esc(a.tag || '未分类') + '</span><span>' + ago(a.created_at) + '</span></div></div>' +
         '<div class="markdown-body">' + md(a.content) + '</div>' +
-        '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' : 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + (likes ? likes.length : 0) + '</button>' +
+        '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' : 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + (likes ? likes.length : 0) + '</button>' + editBtn +
         '<span style="color:var(--text-muted);font-size:0.88rem;">💬 ' + (comments ? comments.length : 0) + ' 条评论</span></div>' +
         '<div class="comments-section"><h3>💬 评论</h3>' +
         (currentUser ? '<div class="comment-form"><input id="comment-input" placeholder="写下你的评论..." maxlength="500"><button class="btn btn-sm btn-primary" style="width:auto" onclick="window.App.addComment(\'' + id + '\')">发送</button></div>' :
@@ -288,6 +466,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
           '<button class="btn btn-sm btn-danger" onclick="window.App.confirmDelete(\'' + a.id + '\')">删除</button></td></tr>';
       });
       tb.innerHTML = h;
+      loadBackgroundMusic();
     } catch (e) { toast('加载失败', 'error'); }
   }
 
@@ -298,6 +477,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (aid) {
       document.getElementById('editor-modal-title').textContent = '编辑文章';
       var { data: a } = await sb.from('articles').select('*').eq('id', aid).single();
+      if (a && !canEditArticle(a)) { toast('你无权编辑该文章', 'error'); return; }
       if (a) { te.value = a.title || ''; tg.value = a.tag || ''; tc.value = a.content || ''; updatePreview(); }
     } else {
       document.getElementById('editor-modal-title').textContent = '写文章';
@@ -322,6 +502,11 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     ta.focus(); ta.setSelectionRange(s + b.length, s + b.length + sel.length); updatePreview();
   }
   function toolbarAction(act) {
+    if (act === 'image') {
+      var imageInput = document.getElementById('editor-image-input');
+      if (imageInput) imageInput.click();
+      return;
+    }
     var m = { h1: ['# ', '', '一级标题'], h2: ['## ', '', '二级标题'], h3: ['### ', '', '三级标题'], bold: ['**', '**', '粗体'], italic: ['*', '*', '斜体'], code: ['`', '`', '代码'], codeblock: ['\n```\n', '\n```\n', '代码'], quote: ['> ', '', '引用'], ul: ['- ', '', '列表项'], ol: ['1. ', '', '列表项'], link: ['[', '](https://)', '链接'], image: ['![', '](https://)', '图片'], hr: ['\n---\n', '', ''] };
     var r = m[act]; if (r) insMd(r[0], r[1], r[2]);
   }
@@ -335,12 +520,15 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (!content) { toast('请输入文章内容', 'error'); return; }
     try {
       if (editingArticleId) {
+        var { data: oldArticle } = await sb.from('articles').select('author_id').eq('id', editingArticleId).single();
+        if (oldArticle && !canEditArticle(oldArticle)) { toast('你无权修改该文章', 'error'); return; }
         var { error } = await sb.from('articles').update({ title: title, tag: tag || '未分类', content: content }).eq('id', editingArticleId);
         if (error) throw error; toast('文章已更新', 'success');
       } else {
         var { error: e2 } = await sb.from('articles').insert({ title: title, tag: tag || '未分类', content: content, author_id: currentUser.id });
         if (e2) throw e2; toast('文章发布成功', 'success');
       }
+      setDrafts(getDrafts().filter(function (d) { return d.content !== content || d.title !== title; }));
       closeEditor();
       if (currentView === 'admin') renderAdmin(); else if (currentView === 'home') renderHome();
     } catch (e) { toast('保存失败：' + e.message, 'error'); }
@@ -426,6 +614,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   window.App = {
     navigate: navigate, viewArticle: function (id) { navigate('article', id); },
     doRegister: doRegister, doLogin: doLogin, doLogout: doLogout,
+    togglePassword: togglePassword,
     toggleDropdown: toggleDropdown, openProfile: openProfile,
     selectEmoji: selectEmoji, saveProfile: saveProfile,
     closeEditor: closeEditor, openEditor: openEditor,
@@ -434,7 +623,10 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     addComment: addComment, onSearch: onSearch, clearSearch: clearSearch,
     switchEditorTab: switchTab, toolbarAction: toolbarAction,
     updatePreview: updatePreview, importFromFeishu: importFromFeishu,
-    refreshCaptcha: genCaptcha
+    refreshCaptcha: genCaptcha,
+    saveDraft: saveDraft, openDrafts: openDrafts, useDraft: useDraft, deleteDraft: deleteDraft,
+    saveBackgroundMusic: saveBackgroundMusic, clearBackgroundMusic: clearBackgroundMusic,
+    toast: toast
   };
 
   document.addEventListener('DOMContentLoaded', async function () {
@@ -460,6 +652,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         currentProfile = p;
       }
     } catch (e) { try { await sb.auth.signOut(); } catch (_) {} }
+    await loadBackgroundMusic();
     navigate('home');
     document.addEventListener('click', function (e) {
       var dd = document.getElementById('user-dropdown'), ab = document.getElementById('user-avatar-btn');
@@ -469,5 +662,32 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var co = document.getElementById('confirm-overlay');
     if (co) co.addEventListener('click', function (e) { if (e.target === co) co.classList.remove('active'); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { document.querySelectorAll('.modal-overlay.active').forEach(function (m) { m.classList.remove('active'); }); document.getElementById('confirm-overlay').classList.remove('active'); } });
+    var editorImageInput = document.getElementById('editor-image-input');
+    if (editorImageInput) {
+      editorImageInput.addEventListener('change', async function () {
+        var file = editorImageInput.files && editorImageInput.files[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) { toast('图片请小于 2MB', 'error'); editorImageInput.value = ''; return; }
+        if (currentUser) {
+          try {
+            var p = 'images/' + currentUser.id + '/' + Date.now() + '_' + safeFileName(file.name);
+            var upi = await sb.storage.from('blog-assets').upload(p, file, { upsert: true });
+            if (!upi.error) {
+              var pu = sb.storage.from('blog-assets').getPublicUrl(p);
+              var url = pu.data && pu.data.publicUrl ? pu.data.publicUrl : '';
+              if (url) {
+                insMd('![图片](', ')', url);
+                toast('图片上传成功', 'success');
+                editorImageInput.value = '';
+                return;
+              }
+            }
+          } catch (e) {}
+        }
+        var fr = new FileReader();
+        fr.onload = function () { insMd('![本地图片](', ')', fr.result); editorImageInput.value = ''; toast('已使用本地模式插入图片', 'info'); };
+        fr.readAsDataURL(file);
+      });
+    }
   });
 })();
