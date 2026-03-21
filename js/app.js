@@ -82,7 +82,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (view === 'home') renderHome();
     else if (view === 'article') renderArticle(id);
     else if (view === 'admin') renderAdmin();
-    else if (view === 'login') setTimeout(function(){ genCaptcha('login-captcha-canvas'); }, 150);
+    else if (view === 'login') {}
     else if (view === 'register') setTimeout(function(){ genCaptcha('register-captcha'); }, 150);
     window.scrollTo(0, 0);
   }
@@ -124,9 +124,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   async function doLogin() {
     var acc = document.getElementById('login-account').value.trim();
     var pw = document.getElementById('login-password').value;
-    var ci = document.getElementById('login-captcha').value.trim().toUpperCase();
     var err = document.getElementById('login-error'); err.classList.remove('show');
-    if (ci !== captchaCode) { err.textContent = '验证码错误'; err.classList.add('show'); genCaptcha('login-captcha-canvas'); return; }
+    if (!acc || !pw) { err.textContent = '请输入账号和密码'; err.classList.add('show'); return; }
     try {
       var { data, error } = await sb.auth.signInWithPassword({ email: acc + '@techblog.com', password: pw });
       if (error) throw error;
@@ -135,7 +134,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       currentProfile = p;
       toast('欢迎回来，' + (currentProfile ? currentProfile.display_name : acc), 'success');
       navigate('home');
-    } catch (e) { err.textContent = '账号或密码错误'; err.classList.add('show'); genCaptcha('login-captcha-canvas'); }
+    } catch (e) { err.textContent = '账号或密码错误'; err.classList.add('show'); }
   }
 
   async function doLogout() {
