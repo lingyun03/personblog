@@ -460,7 +460,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         var { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
         currentProfile = p;
       }
-    } catch (e) {}
+    } catch (e) { try { await sb.auth.signOut(); } catch (_) {} }
     navigate('home');
     document.addEventListener('click', function (e) {
       var dd = document.getElementById('user-dropdown'), ab = document.getElementById('user-avatar-btn');
