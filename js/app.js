@@ -394,7 +394,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         });
         si.textContent = '搜索 "' + searchQuery + '" 找到 ' + f.length + ' 篇文章'; si.classList.add('show');
       } else { si.classList.remove('show'); }
-      cn.textContent = '共 ' + f.length + ' 篇文章';
+      if (cn) cn.textContent = '（共 ' + f.length + ' 篇）';
       if (!f.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><p>' + (searchQuery ? '没有找到匹配的文章' : '还没有文章，快来写第一篇吧！') + '</p></div>'; return; }
       var aids = f.map(function (a) { return a.id; });
       var { data: lk } = aids.length ? await sb.from('likes').select('article_id').in('article_id', aids) : { data: [] };

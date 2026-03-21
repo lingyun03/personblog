@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TechBlog - 技术博客</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/home.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
@@ -56,63 +56,78 @@
   </nav>
   <div class="main-content">
     <div class="page-view" id="view-home">
-      <!-- New Hero Section -->
-      <div class="hero-new">
-        <p class="hero-kicker">TECH · READ · WRITE</p>
-        <div class="hero-title-group">
-          <h1 class="hero-title">TechBlog</h1>
-          <p class="hero-title-line">安静读写的技术角落</p>
+      <div class="home-wrap">
+      <header class="hero-new">
+        <div class="hero-panel">
+          <div class="hero-panel-glow" aria-hidden="true"></div>
+          <div class="hero-badges">
+            <span class="hero-pill">笔记</span>
+            <span class="hero-pill-sep">·</span>
+            <span class="hero-pill">分享</span>
+            <span class="hero-pill-sep">·</span>
+            <span class="hero-pill">社区</span>
+          </div>
+          <p class="hero-kicker">TechBlog · 技术写作空间</p>
+          <div class="hero-title-group">
+            <h1 class="hero-title">把想法写成<span class="hero-title-soft">可阅读</span>的文字</h1>
+            <p class="hero-title-line">低干扰界面 · 清晰层级 · 适合长时间阅读与写作</p>
+          </div>
+          <p class="hero-subtitle">搜索文章、浏览标签，或从下方开始阅读最新内容。</p>
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="搜索文章标题、内容、标签..." oninput="window.App.onSearch(this.value)">
+            <button class="search-clear" id="search-clear" onclick="window.App.clearSearch()">✕</button>
+          </div>
+          <div class="search-result-info" id="search-result-info"></div>
+          <p class="hero-tags-label">热门标签</p>
+          <div class="hero-tags">
+            <span class="hero-tag" data-tag="前端">前端</span>
+            <span class="hero-tag" data-tag="Python">Python</span>
+            <span class="hero-tag" data-tag="教程">教程</span>
+            <span class="hero-tag" data-tag="AI">AI</span>
+            <span class="hero-tag" data-tag="后端">后端</span>
+            <span class="hero-tag" data-tag="DevOps">DevOps</span>
+          </div>
         </div>
-        <p class="hero-subtitle">柔和界面、清晰排版，专注内容本身</p>
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="search-input" placeholder="搜索文章标题、内容、标签..." oninput="window.App.onSearch(this.value)">
-          <button class="search-clear" id="search-clear" onclick="window.App.clearSearch()">✕</button>
-        </div>
-        <div class="search-result-info" id="search-result-info"></div>
-        <div class="hero-tags">
-          <span class="hero-tag" data-tag="前端">前端</span>
-          <span class="hero-tag" data-tag="Python">Python</span>
-          <span class="hero-tag" data-tag="教程">教程</span>
-          <span class="hero-tag" data-tag="AI">AI</span>
-          <span class="hero-tag" data-tag="后端">后端</span>
-          <span class="hero-tag" data-tag="DevOps">DevOps</span>
-        </div>
-      </div>
+      </header>
 
-      <!-- Feature Cards -->
       <div class="features-section">
+        <div class="section-head">
+          <span class="section-eyebrow">能力</span>
+          <h2 class="section-title">为写作与阅读准备的功能</h2>
+          <p class="section-desc">统一在柔和对比度下呈现，避免刺眼高亮。</p>
+        </div>
         <div class="features-grid">
-          <div class="feature-card reveal-on-scroll">
+          <div class="feature-card feature-card--accent-a reveal-on-scroll">
             <div class="feature-icon">✍️</div>
             <h3>Markdown 写作</h3>
             <p>支持完整 Markdown 语法，实时预览，所见即所得的创作体验</p>
           </div>
-          <div class="feature-card reveal-on-scroll">
+          <div class="feature-card feature-card--accent-b reveal-on-scroll">
             <div class="feature-icon">📄</div>
             <h3>飞书文档导入</h3>
             <p>一键导入飞书文档和知识库内容，无缝迁移你的技术笔记</p>
           </div>
-          <div class="feature-card reveal-on-scroll">
+          <div class="feature-card feature-card--accent-c reveal-on-scroll">
             <div class="feature-icon">💬</div>
             <h3>互动社区</h3>
             <p>点赞、评论、收藏，与开发者社区深度互动交流</p>
           </div>
-          <div class="feature-card reveal-on-scroll">
+          <div class="feature-card feature-card--accent-d reveal-on-scroll">
             <div class="feature-icon">🎨</div>
-            <h3>极简美学</h3>
-            <p>精心设计的赛博朋克风格界面，沉浸式的阅读体验</p>
+            <h3>阅读体验</h3>
+            <p>克制配色与留白，长时间阅读也不易疲劳</p>
           </div>
         </div>
       </div>
 
-      <!-- Articles Section -->
       <div class="home-articles-section">
-        <div class="glow-line"></div>
-        <div class="articles-header">
-          <h2>最新文章 <span id="articles-count" style="font-size:0.85rem;color:var(--text-muted);font-weight:400;"></span></h2>
+        <div class="section-head section-head--articles">
+          <span class="section-eyebrow">文章</span>
+          <h2 class="section-title">最新发布 <span id="articles-count" class="articles-count-inline"></span></h2>
         </div>
         <div class="articles-grid" id="articles-grid"></div>
+      </div>
       </div>
     </div>
 
