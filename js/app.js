@@ -44,12 +44,35 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     cb(); return H;
   }
   function il(t) {
+    function normalizeUrl(u) {
+      if (!u) return '#';
+      var s = String(u).trim();
+      if (!s) return '#';
+      if (/^(javascript|data):/i.test(s)) return '#';
+      if (/^(#|\/|\.\/|\.\.\/)/.test(s)) return s;
+      if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(s)) return s;
+      if (s.indexOf('//') === 0) return 'https:' + s;
+      if (/^(github\.com|www\.github\.com|github\.io|www\.github\.io)\b/i.test(s)) return 'https://' + s;
+      return 'https://' + s;
+    }
     t = t.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-    t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
-    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (_, alt, url) {
+      return '<img src="' + normalizeUrl(url) + '" alt="' + alt + '">';
+    });
+    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, text, url) {
+      return '<a href="' + normalizeUrl(url) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
+    });
     t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
     return t;
+  }
+
+  function authErrMsg(e) {
+    var m = ((e && e.message) ? e.message : '').toLowerCase();
+    if (m.indexOf('email not confirmed') !== -1) return '账号已注册但未激活：请在 Supabase 关闭 Email Confirmations，或改用真实邮箱完成验证。';
+    if (m.indexOf('invalid login credentials') !== -1) return '账号或密码错误';
+    if (m.indexOf('too many requests') !== -1) return '操作过于频繁，请稍后再试';
+    return (e && e.message) ? e.message : '请稍后重试';
   }
 
   function toast(m, t) {
@@ -117,8 +140,16 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         options: { data: { displayName: '用户' + acc.slice(-4), avatar: '👤', bio: '', role: role } }
       });
       if (error) throw error;
-      toast('注册成功，请登录', 'success'); navigate('login');
-    } catch (e) { err.textContent = '注册失败：' + (e.message || '请重试'); err.classList.add('show'); }
+      if (data && data.user && !data.session) {
+        toast('注册成功，但账号需激活后才能登录', 'info');
+        err.textContent = '检测到当前项目开启了邮箱激活，但你使用的是虚拟账号邮箱。请在 Supabase -> Authentication -> Providers 关闭 Email Confirmations。';
+        err.classList.add('show');
+        navigate('login');
+        return;
+      }
+      toast('注册成功，请登录', 'success');
+      navigate('login');
+    } catch (e) { err.textContent = '注册失败：' + authErrMsg(e); err.classList.add('show'); }
   }
 
   async function doLogin() {
@@ -135,7 +166,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       currentProfile = p;
       toast('欢迎回来，' + (currentProfile ? currentProfile.display_name : acc), 'success');
       navigate('home');
-    } catch (e) { err.textContent = '账号或密码错误'; err.classList.add('show'); genCaptcha('login-captcha-canvas'); }
+    } catch (e) { err.textContent = authErrMsg(e); err.classList.add('show'); genCaptcha('login-captcha-canvas'); }
   }
 
   async function doLogout() {
