@@ -815,35 +815,88 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     } catch (e) { toast('删除失败', 'error'); }
   }
 
-  function importFromFeishu() {
+  /** 飞书 Open API 需从浏览器经 CORS 代理访问；多线路回退，避免单点 corsproxy.io 不可用 */
+  function feishuProxyUrls(targetUrl) {
+    var e = encodeURIComponent(targetUrl);
+    return [
+      'https://corsproxy.io/?' + e,
+      'https://corsproxy.io/?url=' + e,
+      'https://api.codetabs.com/v1/proxy?quest=' + e,
+      'https://api.allorigins.win/raw?url=' + e
+    ];
+  }
+
+  async function feishuFetchJson(targetUrl, init) {
+    init = init || {};
+    var method = (init.method || 'GET').toUpperCase();
+    var urls = feishuProxyUrls(targetUrl);
+    var lastErr = null;
+    for (var i = 0; i < urls.length; i++) {
+      if (method === 'POST' && i >= 2) break;
+      try {
+        var r = await fetch(urls[i], init);
+        if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
+        var txt = await r.text();
+        var j = JSON.parse(txt);
+        return j;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('网络请求失败（请检查网络或稍后重试）');
+  }
+
+  async function importFromFeishu() {
     var url = document.getElementById('feishu-url').value.trim();
     var aid = document.getElementById('feishu-app-id').value.trim();
     var sec = document.getElementById('feishu-app-secret').value.trim();
     if (!url) { toast('请输入飞书文档链接', 'error'); return; }
     if (!aid || !sec) { toast('请填写飞书凭证', 'error'); return; }
-    var docId = '', isWiki = false;
-    var dm = url.match(/(?:docx|document)\/([a-zA-Z0-9_-]+)/);
-    if (dm) docId = dm[1];
-    var wm = url.match(/wiki\/([a-zA-Z0-9_-]+)/);
-    if (wm && !docId) { docId = wm[1]; isWiki = true; }
-    if (!docId) { toast('无法识别文档链接', 'error'); return; }
-    toast('正在导入...', 'info');
-    var P = 'https://corsproxy.io/?url=';
-    fetch(P + encodeURIComponent('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal'), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_id: aid, app_secret: sec })
-    }).then(function (r) { return r.json(); })
-    .then(function (d) {
-      if (d.code !== 0) throw new Error(d.msg || '获取token失败');
-      if (isWiki) return fetch(P + encodeURIComponent('https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token=' + docId + '&tenant_access_token=' + d.tenant_access_token)).then(function (r) { return r.json(); }).then(function (w) { if (w.code !== 0) throw new Error(w.msg); return { t: d.tenant_access_token, id: w.data.node.obj_token }; });
-      return { t: d.tenant_access_token, id: docId };
-    })
-    .then(function (r) { return fetch(P + encodeURIComponent('https://open.feishu.cn/open-apis/docx/v1/documents/' + r.id + '/raw_content?tenant_access_token=' + r.t)).then(function (res) { return res.json(); }).then(function (d) { if (d.code !== 0) throw new Error(d.msg); return d.data.content; }); })
-    .then(function (blocks) {
+    var docId = '';
+    var isWiki = false;
+    var mDocx = url.match(/\/docx\/([a-zA-Z0-9_-]+)/);
+    var mDoc = url.match(/\/document\/([a-zA-Z0-9_-]+)/);
+    var mWiki = url.match(/\/wiki\/([a-zA-Z0-9_-]+)/);
+    if (mDocx) docId = mDocx[1];
+    else if (mDoc) docId = mDoc[1];
+    else if (mWiki) { docId = mWiki[1]; isWiki = true; }
+    if (!docId) { toast('无法识别文档链接（需包含 /docx/、/document/ 或 /wiki/ 路径）', 'error'); return; }
+    toast('正在导入…', 'info');
+    try {
+      var tokenUrl = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal';
+      var d = await feishuFetchJson(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: aid, app_secret: sec })
+      });
+      if (d.code !== 0 || !d.tenant_access_token) throw new Error(d.msg || '获取 tenant_access_token 失败');
+      var t = d.tenant_access_token;
+      var realId = docId;
+      if (isWiki) {
+        var wikiUrl = 'https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token=' + encodeURIComponent(docId) + '&tenant_access_token=' + encodeURIComponent(t);
+        var w = await feishuFetchJson(wikiUrl, { method: 'GET' });
+        if (w.code !== 0) throw new Error(w.msg || 'Wiki 节点解析失败');
+        if (!w.data || !w.data.node || !w.data.node.obj_token) throw new Error('Wiki 节点未找到关联的云文档');
+        realId = w.data.node.obj_token;
+      }
+      var rawUrl = 'https://open.feishu.cn/open-apis/docx/v1/documents/' + encodeURIComponent(realId) + '/raw_content?tenant_access_token=' + encodeURIComponent(t);
+      var raw = await feishuFetchJson(rawUrl, { method: 'GET' });
+      if (raw.code !== 0) throw new Error(raw.msg || '获取文档正文失败');
+      var blocks = raw.data && raw.data.content;
+      if (!blocks) throw new Error('文档内容为空或接口无 content 字段');
+      if (!Array.isArray(blocks)) blocks = [];
       document.getElementById('editor-title').value = feishuTitle(blocks) || '飞书文档';
       document.getElementById('editor-content').value = feishuBlocks(blocks);
-      updatePreview(); toast('导入成功！', 'success');
-    })
-    .catch(function (e) { toast('导入失败: ' + e.message, 'error'); });
+      updatePreview();
+      toast('导入成功！', 'success');
+    } catch (e) {
+      var msg = (e && e.message) ? e.message : String(e);
+      if (/Failed to fetch|NetworkError|网络请求失败/.test(msg)) {
+        toast('导入失败：代理或网络不可用，请稍后重试，或复制文档内容粘贴到编辑器。', 'error');
+      } else {
+        toast('导入失败：' + msg, 'error');
+      }
+    }
   }
   function feishuBlocks(b) {
     if (!b || !b.length) return ''; var r = '';

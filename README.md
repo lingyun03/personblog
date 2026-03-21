@@ -16,6 +16,10 @@
 
 在 Supabase **SQL Editor** 中执行 `supabase/article_view_count.sql`（新增 `view_count` 字段与 `increment_article_view` 函数），管理后台表格会显示每篇文章阅读次数。未执行脚本时，前台仍可正常阅读，仅统计与后台列可能不可用。
 
+## 飞书文档导入
+
+浏览器无法直接请求 `open.feishu.cn`（CORS），因此通过多个 **CORS 代理**依次尝试（见 `js/app.js` 中 `feishuProxyUrls` / `feishuFetchJson`）。若仍失败，多为代理临时不可用或网络限制，可复制正文到编辑器。飞书应用需具备文档读取权限，Wiki 链接会先解析为云文档 `obj_token`。
+
 ## 页面「没有更新」时
 
 1. **等待 GitHub Pages**：推送后一般 **1～10 分钟** 内生效，可在仓库 **Actions** 或 **Settings → Pages** 查看部署状态。
