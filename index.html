@@ -215,8 +215,9 @@
 </div>
 
 <div class="modal-overlay" id="editor-modal">
-  <div class="modal">
+  <div class="modal modal--editor">
     <h3>✏️ <span id="editor-modal-title">写文章</span></h3>
+    <p class="editor-hint">支持 GitHub 风格 Markdown：多级标题、粗体/斜体、行内代码与带语言代码块、表格、任务列表、删除线、引用与列表等。</p>
     <div class="form-group"><label>文章标题</label><input type="text" id="editor-title" placeholder="输入文章标题..." maxlength="100"></div>
     <div class="form-group"><label>标签分类</label><input type="text" id="editor-tag" placeholder="如：前端、Python、教程..." maxlength="20"></div>
     <div class="editor-tabs">
@@ -240,6 +241,10 @@
       <button class="toolbar-btn" onclick="window.App.toolbarAction('link')" title="链接">🔗</button>
       <button class="toolbar-btn" onclick="window.App.toolbarAction('image')" title="图片">🖼️</button>
       <button class="toolbar-btn" onclick="window.App.toolbarAction('hr')" title="分割线">—</button>
+      <div class="toolbar-sep"></div>
+      <button class="toolbar-btn" onclick="window.App.toolbarAction('strike')" title="删除线"><s>S</s></button>
+      <button class="toolbar-btn" onclick="window.App.toolbarAction('task')" title="任务">☐</button>
+      <button class="toolbar-btn" onclick="window.App.toolbarAction('table')" title="插入表格">表</button>
     </div>
     <div class="editor-content-area">
       <div id="editor-edit-area">

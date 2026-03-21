@@ -26,26 +26,132 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   }
   function trunc(s, n) { if (!s) return ''; var p = s.replace(/[#*`>\-\[\]()!]/g, '').replace(/\n/g, ' ').trim(); return p.length > n ? p.slice(0, n) + '...' : p; }
 
-  function md(text) {
-    if (!text) return '';
-    var L = text.split('\n'), H = '', inC = false, cc = '', inL = false, lt = '', inQ = false;
-    function cb() { if (inL) { H += lt === 'ul' ? '</ul>' : '</ol>'; inL = false; } if (inQ) { H += '</blockquote>'; inQ = false; } }
-    for (var i = 0; i < L.length; i++) {
-      var l = L[i];
-      if (l.trim().indexOf('```') === 0) { if (inC) { H += '<pre><code>' + esc(cc) + '</code></pre>'; inC = false; cc = ''; } else { cb(); inC = true; } continue; }
-      if (inC) { cc += (cc ? '\n' : '') + l; continue; }
-      if (!l.trim()) { cb(); continue; }
-      if (l.indexOf('### ') === 0) { cb(); H += '<h3>' + il(l.slice(4)) + '</h3>'; continue; }
-      if (l.indexOf('## ') === 0) { cb(); H += '<h2>' + il(l.slice(3)) + '</h2>'; continue; }
-      if (l.indexOf('# ') === 0) { cb(); H += '<h1>' + il(l.slice(2)) + '</h1>'; continue; }
-      if (/^(-{3,}|\*{3,})$/.test(l.trim())) { cb(); H += '<hr>'; continue; }
-      if (l.indexOf('> ') === 0) { if (inL) { H += lt === 'ul' ? '</ul>' : '</ol>'; inL = false; } if (!inQ) { H += '<blockquote>'; inQ = true; } H += '<p>' + il(l.slice(2)) + '</p>'; continue; }
-      if (/^[-*+]\s/.test(l)) { if (inQ) { H += '</blockquote>'; inQ = false; } if (!inL || lt !== 'ul') { if (inL) H += lt === 'ul' ? '</ul>' : '</ol>'; H += '<ul>'; inL = true; lt = 'ul'; } H += '<li>' + il(l.replace(/^[-*+]\s/, '')) + '</li>'; continue; }
-      if (/^\d+\.\s/.test(l)) { if (inQ) { H += '</blockquote>'; inQ = false; } if (!inL || lt !== 'ol') { if (inL) H += lt === 'ul' ? '</ul>' : '</ol>'; H += '<ol>'; inL = true; lt = 'ol'; } H += '<li>' + il(l.replace(/^\d+\.\s/, '')) + '</li>'; continue; }
-      cb(); H += '<p>' + il(l) + '</p>';
+  function parsePipeRow(line) {
+    var parts = line.split('|');
+    var out = [];
+    for (var i = 0; i < parts.length; i++) {
+      var c = parts[i].trim();
+      if (c === '' && (i === 0 || i === parts.length - 1)) continue;
+      out.push(c);
     }
-    if (inC) H += '<pre><code>' + esc(cc) + '</code></pre>';
-    cb(); return H;
+    return out;
+  }
+  function isTableSepRow(line) {
+    var p = parsePipeRow(line);
+    if (!p.length) return false;
+    return p.every(function (cell) { return /^[\-:]+$/.test(cell.replace(/\s/g, '')); });
+  }
+  function parsePipeTable(rows) {
+    if (!rows.length) return '';
+    var header = parsePipeRow(rows[0]);
+    var di = 1;
+    if (rows.length > 1 && isTableSepRow(rows[1])) di = 2;
+    var html = '<div class="table-wrap"><table class="md-table"><thead><tr>';
+    header.forEach(function (c) { html += '<th>' + il(c) + '</th>'; });
+    html += '</tr></thead><tbody>';
+    for (var r = di; r < rows.length; r++) {
+      var cells = parsePipeRow(rows[r]);
+      if (!cells.length) continue;
+      html += '<tr>';
+      cells.forEach(function (c) { html += '<td>' + il(c) + '</td>'; });
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  function estimateReadingTime(content) {
+    if (!content) return 1;
+    var zh = (content.match(/[\u4e00-\u9fff]/g) || []).length;
+    var en = content.replace(/[\u4e00-\u9fff]/g, '').split(/\s+/).filter(Boolean).length;
+    var units = zh / 400 + en / 200;
+    return Math.max(1, Math.round(units * 10) / 10);
+  }
+
+  function buildTocHtml(items) {
+    if (!items.length) return '';
+    var h = '<aside class="article-toc" aria-label="文章目录"><div class="toc-title">目录</div><ul class="toc-list">';
+    items.forEach(function (it) {
+      h += '<li class="toc-item toc-level-' + it.level + '"><a href="#' + esc(it.id) + '">' + esc(it.text) + '</a></li>';
+    });
+    return h + '</ul></aside>';
+  }
+
+  function md(text) {
+    if (!text) return { html: '', tocHtml: '' };
+    var L = text.split('\n'), H = '', inC = false, cc = '', inL = false, lt = '', inQ = false;
+    var fenceLang = '';
+    var tocItems = [];
+    var hCounter = 0;
+    function cb() { if (inL) { H += lt === 'ul' ? '</ul>' : lt === 'task' ? '</ul>' : '</ol>'; inL = false; } if (inQ) { H += '</blockquote>'; inQ = false; } }
+    function pushHeading(level, sliceLen, line) {
+      var raw = line.slice(sliceLen);
+      hCounter++;
+      var id = 'heading-' + hCounter;
+      if (level <= 4) tocItems.push({ level: level, text: raw.replace(/^\s+/, '').trim(), id: id });
+      return '<h' + level + ' id="' + id + '">' + il(raw) + '</h' + level + '>';
+    }
+    var i = 0;
+    while (i < L.length) {
+      var l = L[i];
+      if (/^\s*```(\w+)?\s*$/.test(l.trim())) {
+        var fm = l.trim().match(/^```(\w+)?$/);
+        if (inC) {
+          var langCls = fenceLang ? ' class="language-' + esc(fenceLang) + '"' : '';
+          H += '<pre><code' + langCls + '>' + esc(cc) + '</code></pre>';
+          inC = false; cc = ''; fenceLang = '';
+        } else {
+          cb(); inC = true; fenceLang = (fm && fm[1]) ? fm[1] : '';
+        }
+        i++; continue;
+      }
+      if (inC) { cc += (cc ? '\n' : '') + l; i++; continue; }
+      if (l.trim().startsWith('|') && l.indexOf('|') !== -1) {
+        var j = i, rows = [];
+        while (j < L.length && L[j].trim().startsWith('|')) { rows.push(L[j]); j++; }
+        if (rows.length >= 2 && isTableSepRow(rows[1])) {
+          cb(); H += parsePipeTable(rows); i = j; continue;
+        }
+      }
+      if (!l.trim()) { cb(); i++; continue; }
+      if (l.indexOf('###### ') === 0) { cb(); H += pushHeading(6, 7, l); i++; continue; }
+      if (l.indexOf('##### ') === 0) { cb(); H += pushHeading(5, 6, l); i++; continue; }
+      if (l.indexOf('#### ') === 0) { cb(); H += pushHeading(4, 5, l); i++; continue; }
+      if (l.indexOf('### ') === 0) { cb(); H += pushHeading(3, 4, l); i++; continue; }
+      if (l.indexOf('## ') === 0) { cb(); H += pushHeading(2, 3, l); i++; continue; }
+      if (l.indexOf('# ') === 0) { cb(); H += pushHeading(1, 2, l); i++; continue; }
+      if (/^(-{3,}|\*{3,})$/.test(l.trim())) { cb(); H += '<hr>'; i++; continue; }
+      if (l.indexOf('> ') === 0) { if (inL) { H += lt === 'ul' || lt === 'task' ? '</ul>' : '</ol>'; inL = false; } if (!inQ) { H += '<blockquote>'; inQ = true; } H += '<p>' + il(l.slice(2)) + '</p>'; i++; continue; }
+      var taskm = l.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.+)$/);
+      if (taskm) {
+        if (inQ) { H += '</blockquote>'; inQ = false; }
+        if (!inL || lt !== 'task') { if (inL) H += lt === 'ul' ? '</ul>' : '</ol>'; H += '<ul class="task-list">'; inL = true; lt = 'task'; }
+        var checked = (taskm[2] || '').toLowerCase() === 'x';
+        H += '<li class="task-item"><input type="checkbox" disabled ' + (checked ? 'checked' : '') + '> ' + il(taskm[3]) + '</li>';
+        i++; continue;
+      }
+      if (/^[-*+]\s/.test(l)) {
+        if (inQ) { H += '</blockquote>'; inQ = false; }
+        if (inL && lt === 'task') { H += '</ul>'; inL = false; }
+        if (!inL || lt !== 'ul') { if (inL) H += lt === 'ol' ? '</ol>' : ''; H += '<ul>'; inL = true; lt = 'ul'; }
+        H += '<li>' + il(l.replace(/^[-*+]\s/, '')) + '</li>';
+        i++; continue;
+      }
+      if (/^\d+\.\s/.test(l)) {
+        if (inQ) { H += '</blockquote>'; inQ = false; }
+        if (inL && lt === 'task') { H += '</ul>'; inL = false; }
+        if (!inL || lt !== 'ol') { if (inL) H += lt === 'ul' ? '</ul>' : ''; H += '<ol>'; inL = true; lt = 'ol'; }
+        H += '<li>' + il(l.replace(/^\d+\.\s/, '')) + '</li>';
+        i++; continue;
+      }
+      cb(); H += '<p>' + il(l) + '</p>'; i++;
+    }
+    if (inC) {
+      var langCls2 = fenceLang ? ' class="language-' + esc(fenceLang) + '"' : '';
+      H += '<pre><code' + langCls2 + '>' + esc(cc) + '</code></pre>';
+    }
+    cb();
+    return { html: H, tocHtml: buildTocHtml(tocItems) };
   }
   function il(t) {
     function normalizeUrl(u) {
@@ -60,6 +166,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       return 'https://' + s;
     }
     t = t.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    t = t.replace(/~~(.+?)~~/g, '<del>$1</del>');
     t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (_, alt, url) {
       return '<img src="' + normalizeUrl(url) + '" alt="' + alt + '">';
     });
@@ -279,6 +386,19 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     else if (view === 'register') setTimeout(function(){ genCaptcha('register-captcha'); }, 150);
     if (view === 'home' && currentUser) { var p = document.getElementById('global-bgm-player'); if (p && p.src) p.play().catch(function () {}); }
     window.scrollTo(0, 0);
+    try {
+      if (history.replaceState) {
+        if (view === 'article' && id) {
+          var u = new URL(window.location.href);
+          u.searchParams.set('article', id);
+          history.replaceState({}, '', u.toString());
+        } else if (view === 'home') {
+          var u2 = new URL(window.location.href);
+          u2.searchParams.delete('article');
+          history.replaceState({}, '', u2.pathname + (u2.searchParams.toString() ? '?' + u2.searchParams.toString() : '') + u2.hash);
+        }
+      }
+    } catch (e) {}
   }
 
   function updateNav() {
@@ -437,17 +557,42 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         ch += '<div class="comment-item"><div class="comment-avatar">' + (ca.avatar || '👤') + '</div><div class="comment-body"><div class="comment-author">' + esc(ca.display_name || '匿名') + '</div><div class="comment-text">' + esc(c.text) + '</div><div class="comment-time">' + ago(c.created_at) + '</div></div></div>';
       });
       var editBtn = canEditArticle(a) ? '<button class="btn btn-sm btn-secondary" onclick="window.App.editArticle(\'' + id + '\')">✏️ 编辑本文</button>' : '';
+      var mdx = md(a.content || '');
+      var readMin = estimateReadingTime(a.content || '');
+      var relatedHtml = '';
+      try {
+        var rq = sb.from('articles').select('id,title,tag').neq('id', id).order('created_at', { ascending: false }).limit(6);
+        if (a.tag) rq = rq.eq('tag', a.tag);
+        var rel = await rq;
+        var relList = rel.data || [];
+        if (relList.length) {
+          relatedHtml = '<section class="related-section"><h3 class="related-title">相关阅读</h3><div class="related-list">';
+          relList.slice(0, 4).forEach(function (ra) {
+            relatedHtml += '<a class="related-link" onclick="window.App.viewArticle(\'' + ra.id + '\')">' + esc(ra.title) + '</a>';
+          });
+          relatedHtml += '</div></section>';
+        }
+      } catch (e2) {}
+      var shareBar = '<div class="article-share">' +
+        '<button type="button" class="btn btn-sm btn-secondary" onclick="window.App.copyArticleLink()">🔗 复制文章链接</button>' +
+        '</div>';
       c.innerHTML = '<button class="back-btn" onclick="window.App.goBack()">← 返回上一页</button>' +
+        '<div class="article-detail-layout">' +
+        (mdx.tocHtml || '') +
+        '<div class="article-detail-main">' +
         '<div class="detail-header"><h1 class="detail-title">' + esc(a.title) + '</h1>' +
         '<div class="detail-meta"><span class="meta-author"><span class="meta-avatar">' + (au.avatar || '👤') + '</span>' + esc(au.display_name || '匿名') + '</span>' +
-        '<span class="card-tag">' + esc(a.tag || '未分类') + '</span><span>' + ago(a.created_at) + '</span></div></div>' +
-        '<div class="markdown-body">' + md(a.content) + '</div>' +
+        '<span class="card-tag">' + esc(a.tag || '未分类') + '</span><span>' + ago(a.created_at) + '</span>' +
+        '<span class="read-time">约 ' + readMin + ' 分钟阅读</span></div></div>' +
+        shareBar +
+        '<div class="markdown-body article-markdown">' + mdx.html + '</div>' +
         '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' : 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + (likes ? likes.length : 0) + '</button>' + editBtn +
         '<span style="color:var(--text-muted);font-size:0.88rem;">💬 ' + (comments ? comments.length : 0) + ' 条评论</span></div>' +
+        relatedHtml +
         '<div class="comments-section"><h3>💬 评论</h3>' +
         (currentUser ? '<div class="comment-form"><input id="comment-input" placeholder="写下你的评论..." maxlength="500"><button class="btn btn-sm btn-primary" style="width:auto" onclick="window.App.addComment(\'' + id + '\')">发送</button></div>' :
         '<p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">登录后即可评论</p>') +
-        '<div class="comment-list">' + ch + '</div></div>';
+        '<div class="comment-list">' + ch + '</div></div></div></div>';
     } catch (e) { toast('加载失败', 'error'); navigate('home'); }
   }
 
@@ -520,7 +665,11 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     document.getElementById('editor-preview').style.display = t === 'preview' ? '' : 'none';
     if (t === 'preview') updatePreview();
   }
-  function updatePreview() { document.getElementById('editor-preview').innerHTML = '<div class="markdown-body">' + md(document.getElementById('editor-content').value) + '</div>'; }
+  function updatePreview() {
+    var raw = document.getElementById('editor-content').value;
+    var r = md(raw);
+    document.getElementById('editor-preview').innerHTML = '<div class="markdown-body">' + r.html + '</div>';
+  }
 
   function insMd(b, a, p) {
     var ta = document.getElementById('editor-content'), s = ta.selectionStart, e = ta.selectionEnd;
@@ -534,8 +683,35 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       if (imageInput) imageInput.click();
       return;
     }
-    var m = { h1: ['# ', '', '一级标题'], h2: ['## ', '', '二级标题'], h3: ['### ', '', '三级标题'], bold: ['**', '**', '粗体'], italic: ['*', '*', '斜体'], code: ['`', '`', '代码'], codeblock: ['\n```\n', '\n```\n', '代码'], quote: ['> ', '', '引用'], ul: ['- ', '', '列表项'], ol: ['1. ', '', '列表项'], link: ['[', '](https://)', '链接'], image: ['![', '](https://)', '图片'], hr: ['\n---\n', '', ''] };
+    if (act === 'strike') { insMd('~~', '~~', '删除线'); return; }
+    if (act === 'task') { insMd('- [ ] ', '', '任务'); return; }
+    if (act === 'table') {
+      var ta = document.getElementById('editor-content');
+      var ins = '\n| 列1 | 列2 |\n| --- | --- |\n| 内容A | 内容B |\n';
+      var s = ta.selectionStart;
+      ta.value = ta.value.substring(0, s) + ins + ta.value.substring(s);
+      ta.focus(); ta.setSelectionRange(s + ins.length, s + ins.length); updatePreview(); return;
+    }
+    var m = { h1: ['# ', '', '一级标题'], h2: ['## ', '', '二级标题'], h3: ['### ', '', '三级标题'], bold: ['**', '**', '粗体'], italic: ['*', '*', '斜体'], code: ['`', '`', '代码'], codeblock: ['\n```js\n', '\n```\n', 'console.log(1)'], quote: ['> ', '', '引用'], ul: ['- ', '', '列表项'], ol: ['1. ', '', '列表项'], link: ['[', '](https://)', '链接'], image: ['![', '](https://)', '图片'], hr: ['\n---\n', '', ''] };
     var r = m[act]; if (r) insMd(r[0], r[1], r[2]);
+  }
+
+  function copyArticleLink() {
+    if (!currentArticle || !currentArticle.id) { toast('无法复制链接', 'error'); return; }
+    var url = '';
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('article', currentArticle.id);
+      url = u.toString();
+    } catch (e) {
+      var base = window.location.href.split('#')[0].split('?')[0];
+      url = base + '?article=' + encodeURIComponent(currentArticle.id);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () { toast('链接已复制', 'success'); }).catch(function () { prompt('复制链接', url); });
+    } else {
+      prompt('复制链接', url);
+    }
   }
 
   async function saveArticle() {
@@ -653,6 +829,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     refreshCaptcha: genCaptcha,
     saveDraft: saveDraft, openDrafts: openDrafts, useDraft: useDraft, deleteDraft: deleteDraft,
     saveBackgroundMusic: saveBackgroundMusic, clearBackgroundMusic: clearBackgroundMusic,
+    copyArticleLink: copyArticleLink,
     toast: toast
   };
 
@@ -680,7 +857,10 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       }
     } catch (e) { try { await sb.auth.signOut(); } catch (_) {} }
     await loadBackgroundMusic();
-    navigate('home');
+    var deepArticle = null;
+    try { deepArticle = new URLSearchParams(window.location.search).get('article'); } catch (e) {}
+    if (deepArticle) navigate('article', deepArticle);
+    else navigate('home');
     document.addEventListener('click', function (e) {
       var dd = document.getElementById('user-dropdown'), ab = document.getElementById('user-avatar-btn');
       if (dd && ab && !dd.contains(e.target) && !ab.contains(e.target)) closeDropdown();
