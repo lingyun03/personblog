@@ -81,8 +81,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (view === 'home') renderHome();
     else if (view === 'article') renderArticle(id);
     else if (view === 'admin') renderAdmin();
-    else if (view === 'login') genCaptcha('login-captcha-canvas');
-    else if (view === 'register') genCaptcha('register-captcha');
+    else if (view === 'login') setTimeout(function(){ genCaptcha('login-captcha-canvas'); }, 100);
+    else if (view === 'register') setTimeout(function(){ genCaptcha('register-captcha'); }, 100);
     window.scrollTo(0, 0);
   }
 
