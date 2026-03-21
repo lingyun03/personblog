@@ -113,7 +113,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     try {
       var role = acc === '12345678' ? 'admin' : 'user';
       var { data, error } = await sb.auth.signUp({
-        email: acc + '@techblog.local', password: pw,
+        email: acc + '@techblog.com', password: pw,
         options: { data: { displayName: '用户' + acc.slice(-4), avatar: '👤', bio: '', role: role } }
       });
       if (error) throw error;
@@ -128,7 +128,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var err = document.getElementById('login-error'); err.classList.remove('show');
     if (ci !== captchaCode) { err.textContent = '验证码错误'; err.classList.add('show'); genCaptcha('login-captcha-canvas'); return; }
     try {
-      var { data, error } = await sb.auth.signInWithPassword({ email: acc + '@techblog.local', password: pw });
+      var { data, error } = await sb.auth.signInWithPassword({ email: acc + '@techblog.com', password: pw });
       if (error) throw error;
       currentUser = data.user;
       var { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
