@@ -248,6 +248,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (view === 'home') renderHome();
     else if (view === 'article') renderArticle(id);
     else if (view === 'admin') renderAdmin();
+    else if (view === 'login') {}
     else if (view === 'register') setTimeout(function(){ genCaptcha('register-captcha'); }, 150);
     if (view === 'home' && currentUser) { var p = document.getElementById('global-bgm-player'); if (p && p.src) p.play().catch(function () {}); }
     window.scrollTo(0, 0);
@@ -299,6 +300,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var acc = document.getElementById('login-account').value.trim();
     var pw = document.getElementById('login-password').value;
     var err = document.getElementById('login-error'); err.classList.remove('show');
+    if (!acc || !pw) { err.textContent = '请输入账号和密码'; err.classList.add('show'); return; }
     try {
       var { data, error } = await sb.auth.signInWithPassword({ email: acc + '@techblog.com', password: pw });
       if (error) throw error;
