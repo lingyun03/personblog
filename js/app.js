@@ -255,6 +255,17 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   function openDrafts() { renderDrafts(); document.getElementById('drafts-modal').classList.add('active'); }
 
   /** 仅登录用户可能播放；访客不请求配置、不加载音频，避免拖慢首屏与浪费流量 */
+  function applyBgmToPlayer(player, setting) {
+    if (!player || !setting || !(setting.url || setting.dataUrl)) return;
+    player.volume = 0.35;
+    var onReady = function () {
+      player.removeEventListener('canplay', onReady);
+      if (currentView === 'home' && currentUser) player.play().catch(function () {});
+    };
+    player.addEventListener('canplay', onReady, { once: true });
+    player.src = setting.url || setting.dataUrl;
+  }
+
   async function loadBackgroundMusic() {
     var player = document.getElementById('global-bgm-player');
     if (!player) return;
@@ -263,25 +274,27 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       player.removeAttribute('src');
       return;
     }
-    bgmSetting = null;
+    var nameEl = document.getElementById('bgm-current-name');
+    var remote = null;
     try {
       var r = await sb.from('site_settings').select('value').eq('key', 'background_music').maybeSingle();
-      if (!r.error && r.data && r.data.value) bgmSetting = r.data.value;
+      if (!r.error && r.data && r.data.value) remote = r.data.value;
     } catch (e) {}
-    if (!bgmSetting) {
-      try { bgmSetting = JSON.parse(localStorage.getItem('tb_background_music') || 'null'); } catch (e2) { bgmSetting = null; }
+    var local = null;
+    try { local = JSON.parse(localStorage.getItem('tb_background_music') || 'null'); } catch (e2) {}
+    function hasBgm(s) { return !!(s && (s.url || s.dataUrl)); }
+    var merged = null;
+    if (hasBgm(remote)) {
+      merged = local ? Object.assign({}, local, remote) : remote;
+    } else if (hasBgm(local)) {
+      merged = local;
     }
-    var nameEl = document.getElementById('bgm-current-name');
+    bgmSetting = merged;
     if (bgmSetting && (bgmSetting.url || bgmSetting.dataUrl)) {
+      try { localStorage.setItem('tb_background_music', JSON.stringify(bgmSetting)); } catch (e) {}
       if (nameEl) nameEl.textContent = '当前：' + (bgmSetting.name || '已设置');
       if (currentView === 'home') {
-        player.volume = 0.35;
-        var onReady = function () {
-          player.removeEventListener('canplay', onReady);
-          if (currentView === 'home' && currentUser) player.play().catch(function () {});
-        };
-        player.addEventListener('canplay', onReady, { once: true });
-        player.src = bgmSetting.url || bgmSetting.dataUrl;
+        applyBgmToPlayer(player, bgmSetting);
       } else {
         player.pause();
         player.removeAttribute('src');
@@ -404,7 +417,10 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var bgmEl = document.getElementById('global-bgm-player');
     if (bgmEl && view !== 'home') {
       bgmEl.pause();
-      bgmEl.removeAttribute('src');
+      /* 登录/注册页保留上次 src，避免仅因进登录页清掉音频地址，重登后需重新上传 */
+      if (view !== 'login' && view !== 'register') {
+        bgmEl.removeAttribute('src');
+      }
     }
     if (view === 'home' && currentUser) loadBackgroundMusic();
     window.scrollTo(0, 0);

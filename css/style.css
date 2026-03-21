@@ -530,31 +530,15 @@ body.page-auth {
   margin-right: auto;
 }
 
+/* 主栏统一阅读宽度，标题与正文对齐，避免「上面窄下面宽」 */
 .article-detail-main {
   min-width: 0;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* 标题、操作条、正文、评论等限制在舒适阅读宽度并居中 */
-.article-detail-main > .detail-header,
-.article-detail-main > .article-share,
-.article-detail-main > .detail-actions,
-.article-detail-main > .related-section,
-.article-detail-main > .comments-section {
   width: 100%;
-  max-width: 46rem;
+  max-width: 44rem;
   margin-left: auto;
   margin-right: auto;
-}
-
-.article-detail-main > .article-markdown {
-  width: 100%;
-  max-width: 48rem;
-  margin-left: auto;
-  margin-right: auto;
+  justify-self: center;
+  display: block;
 }
 
 /* 无目录时仅有一个子元素，占满整行（双保险，兼容旧缓存） */
@@ -562,12 +546,12 @@ body.page-auth {
   grid-column: 1 / -1;
 }
 
-/* 正文区单独放宽，代码块可读性更好 */
-.article-detail-main .article-markdown {
-  max-width: 100%;
+.article-detail-main .markdown-body {
+  font-size: 1.05rem;
+  line-height: 1.88;
 }
 
-/* 宽表格/代码块在舒适栏内横向滚动，不撑破居中布局 */
+/* 宽表格/代码块在栏内横向滚动 */
 .article-detail-main .table-wrap,
 .article-detail-main .markdown-body pre {
   max-width: 100%;
