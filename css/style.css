@@ -939,15 +939,37 @@ body.page-auth {
 .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 1.5rem; }
 
 .modal.modal--editor {
-  max-width: min(96vw, 1320px);
+  max-width: min(96vw, 68rem);
   width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.modal.modal--editor > h3 {
+  text-align: center;
+  margin-bottom: 0.75rem;
 }
 
 .editor-hint {
   font-size: 0.82rem;
   color: var(--text-muted);
   line-height: 1.65;
-  margin: -0.35rem 0 1.25rem;
+  margin: -0.2rem auto 1.25rem;
+  max-width: 44rem;
+  text-align: center;
+}
+
+.modal.modal--editor .form-group {
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.modal.modal--editor .editor-tabs,
+.modal.modal--editor .editor-toolbar {
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ========== RICH TEXT EDITOR ========== */
@@ -991,41 +1013,60 @@ body.page-auth {
 
 .editor-content-area {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem 1.5rem;
+  align-items: stretch;
+  margin-top: 0.25rem;
+}
+
+#editor-edit-area,
+.editor-preview {
+  min-width: 0;
 }
 
 .editor-textarea {
-  min-height: 520px; padding: 1rem;
+  min-height: 520px; padding: 1.1rem 1.15rem;
   width: 100%;
   box-sizing: border-box;
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(15, 23, 42, 0.85);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  color: var(--text-primary); font-size: 0.92rem;
+  color: var(--text-primary);
+  font-size: 1.02rem;
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  line-height: 1.7; resize: vertical; outline: none;
+  line-height: 1.88;
+  resize: vertical; outline: none;
   transition: var(--transition);
 }
 
-.editor-textarea:focus { border-color: var(--accent-cyan); }
+.editor-textarea:focus { border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12); }
 
 .editor-preview {
-  min-height: 520px; padding: 1rem;
-  background: rgba(15, 23, 42, 0.5);
+  min-height: 520px; padding: 1.1rem 1.15rem;
+  background: rgba(15, 23, 42, 0.55);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   overflow-y: auto;
 }
 
-.editor-preview .markdown-body { font-size: 0.95rem; }
+.editor-preview .markdown-body {
+  font-size: 1.05rem;
+  line-height: 1.88;
+  color: var(--text-secondary);
+  max-width: 44rem;
+  margin: 0 auto;
+}
 
 /* Feishu import */
 .feishu-import {
-  margin-top: 1rem; padding: 1rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
   background: rgba(15, 23, 42, 0.5);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .feishu-import h4 {

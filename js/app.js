@@ -255,15 +255,31 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   function openDrafts() { renderDrafts(); document.getElementById('drafts-modal').classList.add('active'); }
 
   /** 仅登录用户可能播放；访客不请求配置、不加载音频，避免拖慢首屏与浪费流量 */
+  function normalizeBgmPayload(v) {
+    if (!v) return null;
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch (e) { return null; }
+    }
+    return v && (v.url || v.dataUrl) ? v : null;
+  }
+
   function applyBgmToPlayer(player, setting) {
     if (!player || !setting || !(setting.url || setting.dataUrl)) return;
+    var url = setting.url || setting.dataUrl;
     player.volume = 0.35;
-    var onReady = function () {
-      player.removeEventListener('canplay', onReady);
+    var tryPlay = function () {
       if (currentView === 'home' && currentUser) player.play().catch(function () {});
     };
-    player.addEventListener('canplay', onReady, { once: true });
-    player.src = setting.url || setting.dataUrl;
+    var done = false;
+    var oncePlay = function () {
+      if (done) return;
+      done = true;
+      tryPlay();
+    };
+    player.addEventListener('canplay', oncePlay, { once: true });
+    player.addEventListener('loadeddata', oncePlay, { once: true });
+    player.src = url;
+    setTimeout(oncePlay, 400);
   }
 
   async function loadBackgroundMusic() {
@@ -278,10 +294,10 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var remote = null;
     try {
       var r = await sb.from('site_settings').select('value').eq('key', 'background_music').maybeSingle();
-      if (!r.error && r.data && r.data.value) remote = r.data.value;
+      if (!r.error && r.data && r.data.value != null) remote = normalizeBgmPayload(r.data.value);
     } catch (e) {}
     var local = null;
-    try { local = JSON.parse(localStorage.getItem('tb_background_music') || 'null'); } catch (e2) {}
+    try { local = normalizeBgmPayload(JSON.parse(localStorage.getItem('tb_background_music') || 'null')); } catch (e2) {}
     function hasBgm(s) { return !!(s && (s.url || s.dataUrl)); }
     var merged = null;
     if (hasBgm(remote)) {
@@ -296,8 +312,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       if (currentView === 'home') {
         applyBgmToPlayer(player, bgmSetting);
       } else {
+        /* 非首页：只暂停，勿清空 src，否则后台上传后回首页无法播放 */
         player.pause();
-        player.removeAttribute('src');
       }
     } else {
       player.pause();
@@ -417,10 +433,6 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var bgmEl = document.getElementById('global-bgm-player');
     if (bgmEl && view !== 'home') {
       bgmEl.pause();
-      /* 登录/注册页保留上次 src，避免仅因进登录页清掉音频地址，重登后需重新上传 */
-      if (view !== 'login' && view !== 'register') {
-        bgmEl.removeAttribute('src');
-      }
     }
     if (view === 'home' && currentUser) loadBackgroundMusic();
     window.scrollTo(0, 0);
