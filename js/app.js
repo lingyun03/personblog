@@ -599,7 +599,6 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         '</div>';
       c.innerHTML = '<button class="back-btn" onclick="window.App.goBack()">← 返回上一页</button>' +
         '<div class="article-detail-layout">' +
-        (mdx.tocHtml || '') +
         '<div class="article-detail-main">' +
         '<div class="detail-header"><h1 class="detail-title">' + esc(a.title) + '</h1>' +
         '<div class="detail-meta"><span class="meta-author"><span class="meta-avatar">' + (au.avatar || '👤') + '</span>' + esc(au.display_name || '匿名') + '</span>' +
@@ -613,7 +612,9 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         '<div class="comments-section"><h3>💬 评论</h3>' +
         (currentUser ? '<div class="comment-form"><input id="comment-input" placeholder="写下你的评论..." maxlength="500"><button class="btn btn-sm btn-primary" style="width:auto" onclick="window.App.addComment(\'' + id + '\')">发送</button></div>' :
         '<p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">登录后即可评论</p>') +
-        '<div class="comment-list">' + ch + '</div></div></div></div>';
+        '<div class="comment-list">' + ch + '</div></div></div>' +
+        (mdx.tocHtml || '') +
+        '</div>';
     } catch (e) { toast('加载失败', 'error'); navigate('home'); }
   }
 

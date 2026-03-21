@@ -473,12 +473,18 @@ body.page-auth {
 
 .article-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  /* 正文在左（宽）、目录在右；避免旧版「仅一个子元素时掉进 200px 第一列」的窄条问题 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
   gap: 1.25rem 1.75rem;
   align-items: start;
 }
 
 .article-detail-main { min-width: 0; max-width: 100%; }
+
+/* 无目录时仅有一个子元素，占满整行（双保险，兼容旧缓存） */
+.article-detail-layout > .article-detail-main:only-child {
+  grid-column: 1 / -1;
+}
 
 /* 正文区单独放宽，代码块可读性更好 */
 .article-detail-main .article-markdown {
@@ -576,6 +582,7 @@ body.page-auth {
     position: relative;
     top: auto;
     max-height: none;
+    order: -1;
   }
 }
 
