@@ -13,6 +13,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   var editingArticleId = null;
   var currentArticle = null;
   var bgmSetting = null;
+  var navHistory = [];
+  var lastArticleNavId = null;
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function ago(d) {
@@ -240,11 +242,36 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     captchaCode = code; return code;
   }
 
-  function navigate(view, id) {
+  function updateBackButton() {
+    var b = document.getElementById('nav-back-btn');
+    if (b) b.style.display = navHistory.length > 0 ? 'inline-flex' : 'none';
+  }
+
+  function goBack() {
+    if (navHistory.length === 0) {
+      navigate('home', null, { skipHistory: true });
+      return;
+    }
+    var prev = navHistory.pop();
+    navigate(prev.view, prev.id, { skipHistory: true });
+  }
+
+  function navigate(view, id, opts) {
+    opts = opts || {};
+    if (!opts.skipHistory) {
+      var same = (view === currentView && (view !== 'article' || id === lastArticleNavId));
+      if (!same) {
+        navHistory.push({ view: currentView, id: lastArticleNavId });
+        if (navHistory.length > 40) navHistory.shift();
+      }
+    }
+    lastArticleNavId = (view === 'article') ? id : null;
     currentView = view;
     document.querySelectorAll('.page-view').forEach(function (e) { e.classList.remove('active'); });
     var t = document.getElementById('view-' + view); if (t) t.classList.add('active');
+    document.body.classList.toggle('page-auth', view === 'login' || view === 'register');
     updateNav();
+    updateBackButton();
     if (view === 'home') renderHome();
     else if (view === 'article') renderArticle(id);
     else if (view === 'admin') renderAdmin();
@@ -410,7 +437,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         ch += '<div class="comment-item"><div class="comment-avatar">' + (ca.avatar || '👤') + '</div><div class="comment-body"><div class="comment-author">' + esc(ca.display_name || '匿名') + '</div><div class="comment-text">' + esc(c.text) + '</div><div class="comment-time">' + ago(c.created_at) + '</div></div></div>';
       });
       var editBtn = canEditArticle(a) ? '<button class="btn btn-sm btn-secondary" onclick="window.App.editArticle(\'' + id + '\')">✏️ 编辑本文</button>' : '';
-      c.innerHTML = '<button class="back-btn" onclick="window.App.navigate(\'home\')">← 返回首页</button>' +
+      c.innerHTML = '<button class="back-btn" onclick="window.App.goBack()">← 返回上一页</button>' +
         '<div class="detail-header"><h1 class="detail-title">' + esc(a.title) + '</h1>' +
         '<div class="detail-meta"><span class="meta-author"><span class="meta-avatar">' + (au.avatar || '👤') + '</span>' + esc(au.display_name || '匿名') + '</span>' +
         '<span class="card-tag">' + esc(a.tag || '未分类') + '</span><span>' + ago(a.created_at) + '</span></div></div>' +
@@ -612,7 +639,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   }
 
   window.App = {
-    navigate: navigate, viewArticle: function (id) { navigate('article', id); },
+    navigate: navigate, goBack: goBack, viewArticle: function (id) { navigate('article', id); },
     doRegister: doRegister, doLogin: doLogin, doLogout: doLogout,
     togglePassword: togglePassword,
     toggleDropdown: toggleDropdown, openProfile: openProfile,

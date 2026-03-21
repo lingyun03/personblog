@@ -24,8 +24,11 @@
 
 <div class="app-container">
   <nav class="navbar">
-    <div class="nav-brand" onclick="window.App.navigate('home')">
-      <div class="brand-icon">🚀</div><span>TechBlog</span>
+    <div class="nav-left">
+      <button type="button" class="nav-back-btn" id="nav-back-btn" onclick="window.App.goBack()" title="返回上一页">← 返回</button>
+      <div class="nav-brand" onclick="window.App.navigate('home')">
+        <div class="brand-icon">🚀</div><span>TechBlog</span>
+      </div>
     </div>
     <div class="nav-links" id="nav-links" style="display:none;">
       <button class="nav-link write-link" id="nav-write" onclick="window.App.openEditor()">✏️ 写文章</button>
@@ -55,26 +58,12 @@
     <div class="page-view" id="view-home">
       <!-- New Hero Section -->
       <div class="hero-new">
-        <div class="hero-divider">
-          <div class="hero-divider-line"></div>
-          <div class="hero-divider-dot"></div>
-          <div class="hero-divider-line"></div>
-        </div>
+        <p class="hero-kicker">TECH · READ · WRITE</p>
         <div class="hero-title-group">
-          <svg class="hero-jet" viewBox="0 0 240 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <defs>
-              <linearGradient id="jetGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#38bdf8"></stop>
-                <stop offset="100%" stop-color="#a78bfa"></stop>
-              </linearGradient>
-            </defs>
-            <polygon points="12,45 62,32 128,36 228,45 128,54 62,58" fill="url(#jetGrad)" opacity="0.9"></polygon>
-            <circle cx="62" cy="45" r="8" fill="#0a0e17"></circle>
-            <polygon points="18,45 2,38 2,52" fill="#f472b6"></polygon>
-          </svg>
-          <h1 class="hero-title">探索 <span class="hero-title-accent">技术世界</span></h1>
+          <h1 class="hero-title">TechBlog</h1>
+          <p class="hero-title-line">安静读写的技术角落</p>
         </div>
-        <p class="hero-subtitle">分享技术见解，记录学习历程，与志同道合的开发者一起成长</p>
+        <p class="hero-subtitle">柔和界面、清晰排版，专注内容本身</p>
         <div class="search-box">
           <span class="search-icon">🔍</span>
           <input type="text" id="search-input" placeholder="搜索文章标题、内容、标签..." oninput="window.App.onSearch(this.value)">
@@ -128,7 +117,7 @@
     </div>
 
     <div class="page-view" id="view-login">
-      <div class="auth-container">
+      <div class="auth-container auth-container--calm">
         <h2>👋 欢迎回来</h2>
         <p class="auth-subtitle">登录你的账号，继续探索</p>
         <div class="form-group"><label>账号</label><input type="text" id="login-account" placeholder="请输入账号" maxlength="10"></div>
@@ -146,7 +135,7 @@
     </div>
 
     <div class="page-view" id="view-register">
-      <div class="auth-container">
+      <div class="auth-container auth-container--calm">
         <h2>✨ 创建账号</h2>
         <p class="auth-subtitle">加入 TechBlog，开始你的技术之旅</p>
         <div class="form-group"><label>账号（8-10 位数字）</label><input type="text" id="reg-account" placeholder="请输入数字账号" maxlength="10"><div class="form-hint">账号将作为你的唯一标识</div></div>
