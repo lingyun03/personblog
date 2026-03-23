@@ -742,11 +742,11 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
           return rq;
         })()
       ];
-      var results = await Promise.all(promises);
-      var comments = results[0].data || [];
-      var likeCount = results[1].count || 0;
-      var liked = !!(currentUser && results[2].data);
-      var relList = results[3].data || [];
+      var settled = await Promise.allSettled(promises);
+      var comments = (settled[0] && settled[0].status === 'fulfilled' && settled[0].value.data) ? settled[0].value.data : [];
+      var likeCount = (settled[1] && settled[1].status === 'fulfilled') ? (settled[1].value.count || 0) : 0;
+      var liked = !!(currentUser && settled[2] && settled[2].status === 'fulfilled' && settled[2].value.data);
+      var relList = (settled[3] && settled[3].status === 'fulfilled' && settled[3].value.data) ? settled[3].value.data : [];
       currentArticle = a;
       var ch = '';
       if (!comments || !comments.length) ch = '<p style="color:var(--text-muted);font-size:0.88rem;">暂无评论</p>';
