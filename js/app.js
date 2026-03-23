@@ -31,6 +31,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   var visitTracked = false;
   var homeRetryTimer = null;
   var articleRetryTimer = null;
+  var shouldResetSearchOnHome = false;
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function ago(d) {
@@ -524,7 +525,19 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     document.body.classList.toggle('page-auth', view === 'login' || view === 'register');
     updateNav();
     updateBackButton();
-    if (view === 'home') renderHome();
+    if (view === 'home') {
+      if (shouldResetSearchOnHome) {
+        var sInput = document.getElementById('search-input');
+        if (sInput) sInput.value = '';
+        searchQuery = '';
+        var sClear = document.getElementById('search-clear');
+        if (sClear) sClear.classList.remove('show');
+        var sInfo = document.getElementById('search-result-info');
+        if (sInfo) sInfo.classList.remove('show');
+        shouldResetSearchOnHome = false;
+      }
+      renderHome();
+    }
     else if (view === 'article') renderArticle(id);
     else if (view === 'admin') renderAdmin();
     else if (view === 'login') {}
@@ -603,6 +616,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       currentUser = data.user;
       var { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
       currentProfile = p;
+      shouldResetSearchOnHome = true;
       toast('欢迎回来，' + (currentProfile ? currentProfile.display_name : acc), 'success');
       navigate('home');
     } catch (e) { err.textContent = authErrMsg(e); err.classList.add('show'); }
