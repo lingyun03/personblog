@@ -729,6 +729,10 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
 
   async function renderArticle(id) {
     var c = document.getElementById('article-detail-content');
+    if (!id) {
+      c.innerHTML = '<div class="empty-state"><p>文章ID无效，请返回首页重试</p></div>';
+      return;
+    }
     if (!tryInitSupabase()) {
       c.innerHTML = '<div class="empty-state"><p>服务初始化中，请稍候...</p></div>';
       if (articleRetryTimer) clearTimeout(articleRetryTimer);
@@ -740,10 +744,25 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     }
     c.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
     try {
-      var { data: a, error } = await sb.from('articles').select('*, author:profiles(*)').eq('id', id).single();
-      if (error) throw error;
+      var a = null;
+      var au = {};
+      var primary = await sb.from('articles').select('*, author:profiles(*)').eq('id', id).single();
+      if (!primary.error && primary.data) {
+        a = primary.data;
+        au = a.author || {};
+      } else {
+        // 兼容未建立关系/策略差异：降级到不带关联查询
+        var fallback = await sb.from('articles').select('*').eq('id', id).single();
+        if (fallback.error || !fallback.data) throw (fallback.error || primary.error || new Error('文章不存在'));
+        a = fallback.data;
+        if (a.author_id) {
+          try {
+            var prof = await sb.from('profiles').select('*').eq('id', a.author_id).maybeSingle();
+            au = prof.data || {};
+          } catch (eProf) {}
+        }
+      }
       sb.rpc('increment_article_view', { article_uuid: id }).catch(function () {});
-      var au = a.author || {};
       var promises = [
         sb.from('comments').select('*, author:profiles(*)').eq('article_id', id).order('created_at', { ascending: false }),
         sb.from('likes').select('*', { count: 'exact', head: true }).eq('article_id', id),
@@ -800,7 +819,11 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         '<div class="comment-list">' + ch + '</div></div></div>' +
         (mdx.tocHtml || '') +
         '</div>';
-    } catch (e) { toast('加载失败', 'error'); navigate('home'); }
+    } catch (e) {
+      var msg = (e && e.message) ? e.message : '未知错误';
+      c.innerHTML = '<div class="empty-state"><p>文章加载失败：' + esc(msg) + '</p><p style="margin-top:10px;"><button class="btn btn-secondary btn-sm" onclick="window.App.goBack()">返回</button> <button class="btn btn-primary btn-sm" onclick="window.App.viewArticle(\'' + id + '\')">重试</button></p></div>';
+      toast('文章加载失败，请重试', 'error');
+    }
   }
 
   async function toggleLike(aid) {
