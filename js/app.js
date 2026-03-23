@@ -15,6 +15,10 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   var bgmSetting = null;
   var navHistory = [];
   var lastArticleNavId = null;
+  var homeCache = null;
+  var homeCacheAt = 0;
+  var HOME_CACHE_TTL = 30000;
+  var visitTracked = false;
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function ago(d) {
@@ -190,6 +194,14 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     return (e && e.message) ? e.message : '请稍后重试';
   }
 
+  function ensureAuthReady(errEl) {
+    if (sb && sb.auth) return true;
+    var msg = '登录服务未就绪：请检查网络或 CDN（@supabase/supabase-js）是否可访问，然后刷新页面重试。';
+    if (errEl) { errEl.textContent = msg; errEl.classList.add('show'); }
+    else toast(msg, 'error');
+    return false;
+  }
+
   function toast(m, t) {
     var c = document.getElementById('toast-container'), e = document.createElement('div');
     e.className = 'toast ' + (t || 'info'); e.textContent = m; c.appendChild(e);
@@ -209,6 +221,70 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   function draftKey() { return 'tb_drafts_' + (currentUser ? currentUser.id : 'guest'); }
   function safeFileName(name) {
     return String(name || 'file').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_');
+  }
+
+  function sumArticleViews(articles) {
+    return (articles || []).reduce(function (acc, a) {
+      var vc = typeof a.view_count === 'number' ? a.view_count : parseInt(a.view_count, 10) || 0;
+      return acc + vc;
+    }, 0);
+  }
+
+  function normalizeDayKey(d) {
+    var dt = new Date(d);
+    if (isNaN(dt.getTime())) return '';
+    var y = dt.getFullYear();
+    var m = String(dt.getMonth() + 1).padStart(2, '0');
+    var day = String(dt.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  function renderVisitBars(rows) {
+    var box = document.getElementById('visit-bars');
+    var totalEl = document.getElementById('visit-visual-total');
+    if (!box) return;
+    var today = new Date();
+    var days = [];
+    for (var i = 13; i >= 0; i--) {
+      var d = new Date(today);
+      d.setDate(today.getDate() - i);
+      days.push(d);
+    }
+    var map = {};
+    (rows || []).forEach(function (r) {
+      var k = normalizeDayKey(r.day);
+      if (k) map[k] = parseInt(r.total_visits, 10) || 0;
+    });
+    var values = days.map(function (d) { return map[normalizeDayKey(d)] || 0; });
+    var maxV = Math.max.apply(null, values.concat([1]));
+    var sumV = values.reduce(function (a, b) { return a + b; }, 0);
+    if (totalEl) totalEl.textContent = '近 14 天累计访问：' + sumV;
+    box.innerHTML = days.map(function (d, idx) {
+      var v = values[idx];
+      var h = Math.max(8, Math.round((v / maxV) * 110));
+      var label = String(d.getMonth() + 1) + '/' + String(d.getDate());
+      return '<div class="visit-bar-col" title="' + label + '：' + v + ' 次">' +
+        '<div class="visit-bar" style="height:' + h + 'px"></div>' +
+        '<div class="visit-bar-value">' + v + '</div>' +
+        '<div class="visit-bar-label">' + label + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  async function trackSiteVisitIfNeeded() {
+    if (!sb || visitTracked) return;
+    visitTracked = true;
+    var now = Date.now();
+    var key = 'tb_last_site_visit_ping';
+    var last = 0;
+    try { last = parseInt(localStorage.getItem(key) || '0', 10) || 0; } catch (e) {}
+    if (now - last < 30 * 60 * 1000) return;
+    try {
+      await sb.rpc('track_site_visit');
+      try { localStorage.setItem(key, String(now)); } catch (_) {}
+    } catch (e2) {
+      // 没有部署 SQL 时静默跳过，避免影响主流程
+    }
   }
 
   function getDrafts() {
@@ -478,6 +554,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var pw2 = document.getElementById('reg-password2').value;
     var ci = document.getElementById('reg-captcha').value.trim().toUpperCase();
     var err = document.getElementById('reg-error'); err.classList.remove('show');
+    if (!ensureAuthReady(err)) return;
     if (!/^\d{8,10}$/.test(acc)) { err.textContent = '账号必须是 8-10 位数字'; err.classList.add('show'); return; }
     if (!/^(?=.*[a-zA-Z])(?=.*\d).{8,}$/.test(pw)) { err.textContent = '密码至少 8 位，需包含字母和数字'; err.classList.add('show'); return; }
     if (pw !== pw2) { err.textContent = '两次密码不一致'; err.classList.add('show'); return; }
@@ -505,6 +582,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     var acc = document.getElementById('login-account').value.trim();
     var pw = document.getElementById('login-password').value;
     var err = document.getElementById('login-error'); err.classList.remove('show');
+    if (!ensureAuthReady(err)) return;
     if (!acc || !pw) { err.textContent = '请输入账号和密码'; err.classList.add('show'); return; }
     try {
       var { data, error } = await sb.auth.signInWithPassword({ email: acc + '@techblog.com', password: pw });
@@ -518,6 +596,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   }
 
   async function doLogout() {
+    if (!ensureAuthReady()) return;
     await sb.auth.signOut(); currentUser = null; currentProfile = null;
     var player = document.getElementById('global-bgm-player'); if (player) player.pause();
     closeDropdown(); toast('已退出登录', 'info'); navigate('home');
@@ -561,8 +640,16 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     if (!sb) { c.innerHTML = '<div class="empty-state"><p>数据库未连接</p></div>'; return; }
     c.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
     try {
-      var { data: articles, error } = await sb.from('articles').select('*, author:profiles(*)').order('created_at', { ascending: false }).limit(200);
-      if (error) throw error;
+      var articles = null;
+      if (homeCache && (Date.now() - homeCacheAt) < HOME_CACHE_TTL) {
+        articles = homeCache;
+      } else {
+        var homeRes = await sb.from('articles').select('*, author:profiles(*)').order('created_at', { ascending: false }).limit(200);
+        if (homeRes.error) throw homeRes.error;
+        articles = homeRes.data || [];
+        homeCache = articles;
+        homeCacheAt = Date.now();
+      }
       var f = articles;
       if (searchQuery) {
         var q = searchQuery.toLowerCase();
@@ -574,8 +661,16 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       if (cn) cn.textContent = '（共 ' + f.length + ' 篇）';
       if (!f.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><p>' + (searchQuery ? '没有找到匹配的文章' : '还没有文章，快来写第一篇吧！') + '</p></div>'; return; }
       var aids = f.map(function (a) { return a.id; });
-      var { data: lk } = aids.length ? await sb.from('likes').select('article_id').in('article_id', aids) : { data: [] };
-      var { data: cm } = aids.length ? await sb.from('comments').select('article_id').in('article_id', aids) : { data: [] };
+      var lk = [];
+      var cm = [];
+      if (aids.length) {
+        var statRes = await Promise.all([
+          sb.from('likes').select('article_id').in('article_id', aids),
+          sb.from('comments').select('article_id').in('article_id', aids)
+        ]);
+        lk = statRes[0].data || [];
+        cm = statRes[1].data || [];
+      }
       var lc = {}, cc = {};
       (lk || []).forEach(function (l) { lc[l.article_id] = (lc[l.article_id] || 0) + 1; });
       (cm || []).forEach(function (c) { cc[c.article_id] = (cc[c.article_id] || 0) + 1; });
@@ -602,14 +697,26 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     try {
       var { data: a, error } = await sb.from('articles').select('*, author:profiles(*)').eq('id', id).single();
       if (error) throw error;
-      try {
-        await sb.rpc('increment_article_view', { article_uuid: id });
-      } catch (eInc) {}
+      sb.rpc('increment_article_view', { article_uuid: id }).catch(function () {});
       var au = a.author || {};
-      var { data: comments } = await sb.from('comments').select('*, author:profiles(*)').eq('article_id', id).order('created_at', { ascending: false });
-      var { data: likes } = await sb.from('likes').select('user_id').eq('article_id', id);
+      var promises = [
+        sb.from('comments').select('*, author:profiles(*)').eq('article_id', id).order('created_at', { ascending: false }),
+        sb.from('likes').select('*', { count: 'exact', head: true }).eq('article_id', id),
+        currentUser
+          ? sb.from('likes').select('id').eq('article_id', id).eq('user_id', currentUser.id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        (function () {
+          var rq = sb.from('articles').select('id,title,tag').neq('id', id).order('created_at', { ascending: false }).limit(6);
+          if (a.tag) rq = rq.eq('tag', a.tag);
+          return rq;
+        })()
+      ];
+      var results = await Promise.all(promises);
+      var comments = results[0].data || [];
+      var likeCount = results[1].count || 0;
+      var liked = !!(currentUser && results[2].data);
+      var relList = results[3].data || [];
       currentArticle = a;
-      var liked = currentUser && likes ? likes.some(function (l) { return l.user_id === currentUser.id; }) : false;
       var ch = '';
       if (!comments || !comments.length) ch = '<p style="color:var(--text-muted);font-size:0.88rem;">暂无评论</p>';
       else comments.forEach(function (c) {
@@ -620,19 +727,13 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       var mdx = md(a.content || '');
       var readMin = estimateReadingTime(a.content || '');
       var relatedHtml = '';
-      try {
-        var rq = sb.from('articles').select('id,title,tag').neq('id', id).order('created_at', { ascending: false }).limit(6);
-        if (a.tag) rq = rq.eq('tag', a.tag);
-        var rel = await rq;
-        var relList = rel.data || [];
-        if (relList.length) {
-          relatedHtml = '<section class="related-section"><h3 class="related-title">相关阅读</h3><div class="related-list">';
-          relList.slice(0, 4).forEach(function (ra) {
-            relatedHtml += '<a class="related-link" onclick="window.App.viewArticle(\'' + ra.id + '\')">' + esc(ra.title) + '</a>';
-          });
-          relatedHtml += '</div></section>';
-        }
-      } catch (e2) {}
+      if (relList.length) {
+        relatedHtml = '<section class="related-section"><h3 class="related-title">相关阅读</h3><div class="related-list">';
+        relList.slice(0, 4).forEach(function (ra) {
+          relatedHtml += '<a class="related-link" onclick="window.App.viewArticle(\'' + ra.id + '\')">' + esc(ra.title) + '</a>';
+        });
+        relatedHtml += '</div></section>';
+      }
       var shareBar = '<div class="article-share">' +
         '<button type="button" class="btn btn-sm btn-secondary" onclick="window.App.copyArticleLink()">🔗 复制文章链接</button>' +
         '</div>';
@@ -645,7 +746,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         '<span class="read-time">约 ' + readMin + ' 分钟阅读</span></div></div>' +
         shareBar +
         '<div class="markdown-body article-markdown">' + mdx.html + '</div>' +
-        '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' : 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + (likes ? likes.length : 0) + '</button>' + editBtn +
+        '<div class="detail-actions"><button class="btn btn-sm ' + (liked ? 'btn-danger' : 'btn-secondary') + '" onclick="window.App.toggleLike(\'' + id + '\')">' + (liked ? '❤️ 已赞 ' : '🤍 赞 ') + likeCount + '</button>' + editBtn +
         '<span style="color:var(--text-muted);font-size:0.88rem;">💬 ' + (comments ? comments.length : 0) + ' 条评论</span></div>' +
         relatedHtml +
         '<div class="comments-section"><h3>💬 评论</h3>' +
@@ -681,12 +782,26 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   async function renderAdmin() {
     if (!currentProfile || currentProfile.role !== 'admin') { navigate('home'); return; }
     try {
-      var { data: articles } = await sb.from('articles').select('*, author:profiles(*)').order('created_at', { ascending: false }).limit(200);
-      var { count: ucount } = await sb.from('profiles').select('*', { count: 'exact', head: true });
-      var { count: ccount } = await sb.from('comments').select('*', { count: 'exact', head: true });
+      var allRes = await Promise.all([
+        sb.from('articles').select('*, author:profiles(*)').order('created_at', { ascending: false }).limit(200),
+        sb.from('profiles').select('*', { count: 'exact', head: true }),
+        sb.from('comments').select('*', { count: 'exact', head: true })
+      ]);
+      var articles = allRes[0].data || [];
+      var ucount = allRes[1].count || 0;
+      var ccount = allRes[2].count || 0;
+      var visitRows = [];
+      try {
+        var visitsRes = await sb.from('site_daily_stats').select('day,total_visits').order('day', { ascending: false }).limit(14);
+        visitRows = visitsRes.data || [];
+      } catch (eStats) {}
       document.getElementById('stat-articles').textContent = articles ? articles.length : 0;
       document.getElementById('stat-users').textContent = ucount || 0;
       document.getElementById('stat-comments').textContent = ccount || 0;
+      var totalViews = sumArticleViews(articles);
+      var viewsEl = document.getElementById('stat-views-total');
+      if (viewsEl) viewsEl.textContent = String(totalViews);
+      renderVisitBars(visitRows.slice().reverse());
       var tb = document.getElementById('admin-tbody');
       if (!articles || !articles.length) { tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem;">暂无文章</td></tr>'; return; }
       var h = '';
@@ -729,8 +844,13 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   }
   function switchTab(t) {
     document.querySelectorAll('.editor-tab').forEach(function (e) { e.classList.toggle('active', e.dataset.tab === t); });
-    document.getElementById('editor-edit-area').style.display = t === 'edit' ? '' : 'none';
-    document.getElementById('editor-preview').style.display = t === 'preview' ? '' : 'none';
+    var editArea = document.getElementById('editor-edit-area');
+    var previewArea = document.getElementById('editor-preview');
+    if (editArea) editArea.style.display = t === 'edit' ? 'flex' : 'none';
+    if (previewArea) {
+      previewArea.style.display = t === 'preview' ? 'block' : 'none';
+      previewArea.classList.toggle('show', t === 'preview');
+    }
     if (t === 'preview') updatePreview();
   }
   function updateEditorStats() {
@@ -849,6 +969,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         var { error: e2 } = await sb.from('articles').insert({ title: title, tag: tag || '未分类', content: content, author_id: currentUser.id });
         if (e2) throw e2; toast('文章发布成功', 'success');
       }
+      homeCache = null;
+      homeCacheAt = 0;
       setDrafts(getDrafts().filter(function (d) { return d.content !== content || d.title !== title; }));
       closeEditor();
       if (currentView === 'admin') renderAdmin(); else if (currentView === 'home') renderHome();
@@ -866,6 +988,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
       await sb.from('likes').delete().eq('article_id', id);
       var { error } = await sb.from('articles').delete().eq('id', id);
       if (error) throw error; toast('文章已删除', 'success');
+      homeCache = null;
+      homeCacheAt = 0;
       if (currentView === 'admin') renderAdmin(); else navigate('home');
     } catch (e) { toast('删除失败', 'error'); }
   }
@@ -915,6 +1039,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
     } catch (e) { try { await sb.auth.signOut(); } catch (_) {} }
     var deepArticle = null;
     try { deepArticle = new URLSearchParams(window.location.search).get('article'); } catch (e) {}
+    trackSiteVisitIfNeeded();
     if (deepArticle) navigate('article', deepArticle);
     else navigate('home');
     document.addEventListener('click', function (e) {

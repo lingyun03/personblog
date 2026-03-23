@@ -67,12 +67,21 @@
     var targetX = 0, targetY = 0;
     var currentX = 0, currentY = 0;
 
+    function shouldAnimate() {
+      var homeView = document.getElementById('view-home');
+      return !document.hidden && homeView && homeView.classList.contains('active');
+    }
+
     document.addEventListener('mousemove', function (e) {
       targetX = (e.clientX / window.innerWidth - 0.5) * 2;
       targetY = (e.clientY / window.innerHeight - 0.5) * 2;
-    });
+    }, { passive: true });
 
     function animate() {
+      if (!shouldAnimate()) {
+        rafId = requestAnimationFrame(animate);
+        return;
+      }
       // Smooth interpolation
       currentX += (targetX - currentX) * 0.04;
       currentY += (targetY - currentY) * 0.04;

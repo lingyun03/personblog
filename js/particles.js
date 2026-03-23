@@ -9,6 +9,8 @@ class ParticleBackground {
     this.particles = [];
     this.mouse = { x: null, y: null };
     this.animationId = null;
+    this.frameTick = 0;
+    this.reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.resize();
     this.init();
     this.bindEvents();
@@ -16,12 +18,19 @@ class ParticleBackground {
   }
 
   resize() {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    this.canvas.width = Math.floor(window.innerWidth * dpr);
+    this.canvas.height = Math.floor(window.innerHeight * dpr);
+    this.canvas.style.width = window.innerWidth + 'px';
+    this.canvas.style.height = window.innerHeight + 'px';
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   init() {
-    const count = Math.floor((this.canvas.width * this.canvas.height) / 18000);
+    const visualWidth = window.innerWidth;
+    const visualHeight = window.innerHeight;
+    const areaFactor = this.reduceMotion ? 42000 : 26000;
+    const count = Math.max(20, Math.floor((visualWidth * visualHeight) / areaFactor));
     this.particles = [];
     for (let i = 0; i < count; i++) {
       this.particles.push({
@@ -52,6 +61,15 @@ class ParticleBackground {
   }
 
   animate() {
+    if (document.hidden || this.reduceMotion) {
+      this.animationId = requestAnimationFrame(() => this.animate());
+      return;
+    }
+    this.frameTick++;
+    if (this.frameTick % 2 !== 0) {
+      this.animationId = requestAnimationFrame(() => this.animate());
+      return;
+    }
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.particles.forEach((p, i) => {
@@ -81,6 +99,7 @@ class ParticleBackground {
       this.ctx.fill();
 
       // Draw connections
+      let links = 0;
       for (let j = i + 1; j < this.particles.length; j++) {
         const p2 = this.particles[j];
         const dx = p.x - p2.x;
@@ -93,6 +112,8 @@ class ParticleBackground {
           this.ctx.strokeStyle = `rgba(56, 189, 248, ${0.06 * (1 - dist / 100)})`;
           this.ctx.lineWidth = 0.5;
           this.ctx.stroke();
+          links++;
+          if (links >= 4) break;
         }
       }
     });

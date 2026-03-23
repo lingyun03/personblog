@@ -12,9 +12,14 @@
 
 使用任意静态服务器打开根目录 `index.html` 即可（需配置 `js/app.js` 中的 Supabase 密钥）。
 
-## 文章阅读次数
+## 访问与阅读统计
 
-在 Supabase **SQL Editor** 中执行 `supabase/article_view_count.sql`（新增 `view_count` 字段与 `increment_article_view` 函数），管理后台表格会显示每篇文章阅读次数。未执行脚本时，前台仍可正常阅读，仅统计与后台列可能不可用。
+在 Supabase **SQL Editor** 中执行以下脚本：
+
+- `supabase/article_view_count.sql`：新增 `view_count` 字段与 `increment_article_view` 函数；
+- `supabase/site_visit_metrics.sql`：新增网站日访问统计 `site_daily_stats` 与 `track_site_visit` 函数（管理员后台展示近 14 天访问趋势）。
+
+未执行脚本时，前台仍可正常阅读，但后台统计会显示为 0 或不可用。
 
 ## 页面「没有更新」时
 

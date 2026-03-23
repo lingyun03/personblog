@@ -5,12 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TechBlog - 技术博客</title>
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
   <!-- 更新前端后请递增 ?v= 以绕过浏览器缓存 -->
-  <link rel="stylesheet" href="css/style.css?v=20260327b">
-  <link rel="stylesheet" href="css/home.css?v=20260327b">
+  <link rel="stylesheet" href="css/style.css?v=20260327f">
+  <link rel="stylesheet" href="css/home.css?v=20260327f">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 </head>
 <body>
@@ -197,6 +194,14 @@
           <div class="stat-card"><div class="stat-value" id="stat-articles">0</div><div class="stat-label">文章总数</div></div>
           <div class="stat-card"><div class="stat-value" id="stat-users">0</div><div class="stat-label">注册用户</div></div>
           <div class="stat-card"><div class="stat-value" id="stat-comments">0</div><div class="stat-label">评论总数</div></div>
+          <div class="stat-card"><div class="stat-value" id="stat-views-total">0</div><div class="stat-label">文章总阅读</div></div>
+        </div>
+        <div class="visit-visual-card">
+          <div class="visit-visual-head">
+            <h3>📈 近 14 天网站访问趋势</h3>
+            <span class="form-hint" id="visit-visual-total">累计访问：0</span>
+          </div>
+          <div class="visit-bars" id="visit-bars"></div>
         </div>
         <div class="music-admin-card">
           <h3>🎵 首页背景音乐</h3>
@@ -353,9 +358,60 @@
 <audio id="global-bgm-player" preload="none" loop></audio>
 <input type="file" id="editor-image-input" accept="image/*" style="display:none;">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/particles.js?v=20260327b"></script>
-<script src="js/app.js?v=20260327b"></script>
-<script src="js/home.js?v=20260327b"></script>
+<script src="js/particles.js?v=20260327f" defer></script>
+<script>
+  (function () {
+    var sdkUrls = [
+      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+      'https://unpkg.com/@supabase/supabase-js@2'
+    ];
+    function loadScript(url, timeoutMs) {
+      return new Promise(function (resolve, reject) {
+        var done = false;
+        var timer = setTimeout(function () {
+          if (done) return;
+          done = true;
+          reject(new Error('timeout'));
+        }, timeoutMs || 8000);
+        var s = document.createElement('script');
+        s.src = url;
+        s.async = true;
+        s.onload = function () {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve();
+        };
+        s.onerror = function () {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          reject(new Error('load-failed'));
+        };
+        document.head.appendChild(s);
+      });
+    }
+    function loadSdkThenApp() {
+      var idx = 0;
+      function next() {
+        if (idx >= sdkUrls.length) {
+          bootApp();
+          return;
+        }
+        var url = sdkUrls[idx++];
+        loadScript(url, 7000).then(function () {
+          bootApp();
+        }).catch(next);
+      }
+      next();
+    }
+    function bootApp() {
+      loadScript('js/app.js?v=20260327f', 12000)
+        .then(function () { return loadScript('js/home.js?v=20260327f', 12000); })
+        .catch(function () {});
+    }
+    loadSdkThenApp();
+  })();
+</script>
 </body>
 </html>
