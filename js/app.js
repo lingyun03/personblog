@@ -762,7 +762,12 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
           } catch (eProf) {}
         }
       }
-      sb.rpc('increment_article_view', { article_uuid: id }).catch(function () {});
+      try {
+        var incReq = sb.rpc('increment_article_view', { article_uuid: id });
+        if (incReq && typeof incReq.then === 'function') {
+          incReq.then(function () {}).catch(function () {});
+        }
+      } catch (eInc) {}
       var promises = [
         sb.from('comments').select('*, author:profiles(*)').eq('article_id', id).order('created_at', { ascending: false }),
         sb.from('likes').select('*', { count: 'exact', head: true }).eq('article_id', id),
