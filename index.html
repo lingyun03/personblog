@@ -6,8 +6,8 @@
   <title>TechBlog - 技术博客</title>
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <!-- 更新前端后请递增 ?v= 以绕过浏览器缓存 -->
-  <link rel="stylesheet" href="css/style.css?v=20260327f">
-  <link rel="stylesheet" href="css/home.css?v=20260327f">
+  <link rel="stylesheet" href="css/style.css?v=20260327g">
+  <link rel="stylesheet" href="css/home.css?v=20260327g">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 </head>
 <body>
@@ -358,60 +358,26 @@
 <audio id="global-bgm-player" preload="none" loop></audio>
 <input type="file" id="editor-image-input" accept="image/*" style="display:none;">
 
-<script src="js/particles.js?v=20260327f" defer></script>
+<script src="js/particles.js?v=20260327g" defer></script>
 <script>
   (function () {
-    var sdkUrls = [
+    var urls = [
       'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
       'https://unpkg.com/@supabase/supabase-js@2'
     ];
-    function loadScript(url, timeoutMs) {
-      return new Promise(function (resolve, reject) {
-        var done = false;
-        var timer = setTimeout(function () {
-          if (done) return;
-          done = true;
-          reject(new Error('timeout'));
-        }, timeoutMs || 8000);
-        var s = document.createElement('script');
-        s.src = url;
-        s.async = true;
-        s.onload = function () {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          resolve();
-        };
-        s.onerror = function () {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          reject(new Error('load-failed'));
-        };
-        document.head.appendChild(s);
-      });
+    var i = 0;
+    function loadNext() {
+      if (i >= urls.length) return;
+      var s = document.createElement('script');
+      s.src = urls[i++];
+      s.async = true;
+      s.onerror = loadNext;
+      document.head.appendChild(s);
     }
-    function loadSdkThenApp() {
-      var idx = 0;
-      function next() {
-        if (idx >= sdkUrls.length) {
-          bootApp();
-          return;
-        }
-        var url = sdkUrls[idx++];
-        loadScript(url, 7000).then(function () {
-          bootApp();
-        }).catch(next);
-      }
-      next();
-    }
-    function bootApp() {
-      loadScript('js/app.js?v=20260327f', 12000)
-        .then(function () { return loadScript('js/home.js?v=20260327f', 12000); })
-        .catch(function () {});
-    }
-    loadSdkThenApp();
+    loadNext();
   })();
 </script>
+<script src="js/app.js?v=20260327g" defer></script>
+<script src="js/home.js?v=20260327g" defer></script>
 </body>
 </html>

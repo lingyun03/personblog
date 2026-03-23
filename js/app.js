@@ -4,8 +4,18 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
 (function () {
   'use strict';
   var sb = null;
-  try { sb = supabase.createClient(SB_URL, SB_KEY); } catch(e) { console.error('Supabase init failed:', e); }
-  var isConfigured = sb !== null;
+  var isConfigured = false;
+  function tryInitSupabase() {
+    if (sb) return true;
+    try {
+      if (window.supabase && window.supabase.createClient) {
+        sb = window.supabase.createClient(SB_URL, SB_KEY);
+      }
+    } catch (e) {}
+    isConfigured = sb !== null;
+    return isConfigured;
+  }
+  tryInitSupabase();
   var currentUser = null;
   var currentProfile = null;
   var currentView = 'home';
@@ -19,6 +29,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   var homeCacheAt = 0;
   var HOME_CACHE_TTL = 30000;
   var visitTracked = false;
+  var homeRetryTimer = null;
+  var articleRetryTimer = null;
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function ago(d) {
@@ -195,6 +207,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   }
 
   function ensureAuthReady(errEl) {
+    tryInitSupabase();
     if (sb && sb.auth) return true;
     var msg = '登录服务未就绪：请检查网络或 CDN（@supabase/supabase-js）是否可访问，然后刷新页面重试。';
     if (errEl) { errEl.textContent = msg; errEl.classList.add('show'); }
@@ -637,7 +650,16 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
 
   async function renderHome() {
     var c = document.getElementById('articles-grid'), cn = document.getElementById('articles-count'), si = document.getElementById('search-result-info');
-    if (!sb) { c.innerHTML = '<div class="empty-state"><p>数据库未连接</p></div>'; return; }
+    if (!tryInitSupabase()) {
+      c.innerHTML = '<div class="empty-state"><p>服务初始化中，请稍候...</p></div>';
+      if (!homeRetryTimer) {
+        homeRetryTimer = setTimeout(function () {
+          homeRetryTimer = null;
+          if (currentView === 'home') renderHome();
+        }, 900);
+      }
+      return;
+    }
     c.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
     try {
       var articles = null;
@@ -693,6 +715,15 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
 
   async function renderArticle(id) {
     var c = document.getElementById('article-detail-content');
+    if (!tryInitSupabase()) {
+      c.innerHTML = '<div class="empty-state"><p>服务初始化中，请稍候...</p></div>';
+      if (articleRetryTimer) clearTimeout(articleRetryTimer);
+      articleRetryTimer = setTimeout(function () {
+        articleRetryTimer = null;
+        if (currentView === 'article') renderArticle(id);
+      }, 900);
+      return;
+    }
     c.innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
     try {
       var { data: a, error } = await sb.from('articles').select('*, author:profiles(*)').eq('id', id).single();
@@ -780,6 +811,7 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   }
 
   async function renderAdmin() {
+    if (!tryInitSupabase()) { toast('服务初始化中，请稍候再试', 'info'); return; }
     if (!currentProfile || currentProfile.role !== 'admin') { navigate('home'); return; }
     try {
       var allRes = await Promise.all([
@@ -1015,33 +1047,8 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
   };
 
   document.addEventListener('DOMContentLoaded', async function () {
-    if (!isConfigured) {
-      document.getElementById('view-home').innerHTML =
-        '<div class="auth-container" style="max-width:620px;margin:3rem auto;">' +
-        '<h2>⚙️ 数据库配置</h2><p class="auth-subtitle">博客需要连接 Supabase 云数据库</p>' +
-        '<div style="text-align:left;background:rgba(15,23,42,0.8);padding:1.5rem;border-radius:8px;margin:1.5rem 0;font-size:0.88rem;line-height:2;color:var(--text-secondary);">' +
-        '<p><strong style="color:var(--accent-cyan);">步骤一：</strong>打开 supabase.com 注册</p>' +
-        '<p><strong style="color:var(--accent-cyan);">步骤二：</strong>创建项目，区域选 Tokyo</p>' +
-        '<p><strong style="color:var(--accent-cyan);">步骤三：</strong>Settings → API 复制 URL 和 key</p>' +
-        '<p><strong style="color:var(--accent-cyan);">步骤四：</strong>SQL Editor 执行建表语句</p>' +
-        '<p><strong style="color:var(--accent-cyan);">步骤五：</strong>Authentication → 关闭 Email Confirmations</p>' +
-        '<p><strong style="color:var(--accent-cyan);">步骤六：</strong>打开 js/app.js 替换前两行配置</p>' +
-        '</div></div>';
-      document.getElementById('view-home').classList.add('active'); return;
-    }
-    try {
-      var { data: { user } } = await sb.auth.getUser();
-      if (user) {
-        currentUser = user;
-        var { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
-        currentProfile = p;
-      }
-    } catch (e) { try { await sb.auth.signOut(); } catch (_) {} }
-    var deepArticle = null;
-    try { deepArticle = new URLSearchParams(window.location.search).get('article'); } catch (e) {}
-    trackSiteVisitIfNeeded();
-    if (deepArticle) navigate('article', deepArticle);
-    else navigate('home');
+    var homeView = document.getElementById('view-home');
+    if (homeView) homeView.classList.add('active');
     document.addEventListener('click', function (e) {
       var dd = document.getElementById('user-dropdown'), ab = document.getElementById('user-avatar-btn');
       if (dd && ab && !dd.contains(e.target) && !ab.contains(e.target)) closeDropdown();
@@ -1077,5 +1084,32 @@ var SB_KEY = 'sb_publishable_UC4HLIn8O1T1MZRpp-V5SA_NP3KHWe-';
         fr.readAsDataURL(file);
       });
     }
+
+    // 先显示首页，确保未登录也能浏览；Supabase 就绪后再补全鉴权与深链。
+    navigate('home');
+
+    var bootTry = 0;
+    var bootTimer = setInterval(async function () {
+      bootTry++;
+      if (!tryInitSupabase()) {
+        if (bootTry > 60) clearInterval(bootTimer);
+        return;
+      }
+      clearInterval(bootTimer);
+      try {
+        var { data: { user } } = await sb.auth.getUser();
+        if (user) {
+          currentUser = user;
+          var { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
+          currentProfile = p;
+        }
+      } catch (e) {}
+      var deepArticle = null;
+      try { deepArticle = new URLSearchParams(window.location.search).get('article'); } catch (e2) {}
+      trackSiteVisitIfNeeded();
+      if (deepArticle) navigate('article', deepArticle);
+      else if (currentView === 'home') renderHome();
+      updateNav();
+    }, 500);
   });
 })();
